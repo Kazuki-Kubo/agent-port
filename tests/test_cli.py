@@ -187,6 +187,46 @@ def test_setup_creates_dotenv_and_workspace_registry(
     assert "created .env" in captured.out
 
 
+def test_setup_force_keeps_existing_dotenv(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """`setup --force` でも既存 `.env` を上書きしないことを検証する。
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        作業ディレクトリを差し替える fixture。
+    tmp_path : Path
+        テスト用の一時ディレクトリ。
+    capsys : pytest.CaptureFixture[str]
+        標準出力を取得する fixture。
+
+    Returns
+    -------
+    None
+        `.env` の内容が保持され、保護メッセージが出ることを確認する。
+    """
+
+    env_path = tmp_path / ".env"
+    env_path.write_text("SECRET_TOKEN=keep-me\n", encoding="utf-8")
+    (tmp_path / ".env.example").write_text("SECRET_TOKEN=replace-me\n", encoding="utf-8")
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    (config_dir / "workspaces.json").write_text('{"workspaces":[{"id":"before"}]}', encoding="utf-8")
+    (config_dir / "workspaces.json.example").write_text('{"workspaces":[]}', encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main(["setup", "--force"])
+
+    captured = capsys.readouterr()
+    assert exit_code == 0
+    assert env_path.read_text(encoding="utf-8") == "SECRET_TOKEN=keep-me\n"
+    assert "protected .env" in captured.out
+    assert (config_dir / "workspaces.json").read_text(encoding="utf-8") == '{"workspaces":[]}'
+
+
 def test_doctor_reports_ok_when_config_and_codex_command_are_available(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

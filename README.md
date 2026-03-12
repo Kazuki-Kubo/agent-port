@@ -13,7 +13,7 @@ uv sync --dev
 uv run agent-port setup
 ```
 
-`setup` は `.env.example` を `.env` に、`config/workspaces.json.example` を `config/workspaces.json` にコピーします。既存ファイルはそのまま残し、`--force` を付けたときだけ上書きします。
+`setup` は `.env.example` を `.env` に、`config/workspaces.json.example` を `config/workspaces.json` にコピーします。既存の `.env` は秘密情報保護のため上書きしません。`--force` を付けた場合でも、上書き対象は `config/workspaces.json` のような一般設定ファイルだけです。
 
 次に `.env` と `config/workspaces.json` を編集します。workspace はこの repo の外にある作業対象ディレクトリを指定してください。`agent-port` 本体やその配下は workspace にできません。
 

@@ -25,7 +25,8 @@ class SetupFileResult:
     target : Path
         配置先の実ファイル。
     action : str
-        実施内容。`created`、`overwritten`、`kept`、`missing_template` のいずれか。
+        実施内容。`created`、`overwritten`、`kept`、`protected`、
+        `missing_template` のいずれか。
     """
 
     source: Path
@@ -173,7 +174,7 @@ def build_cli_parser() -> argparse.ArgumentParser:
     setup_parser.add_argument(
         "--force",
         action="store_true",
-        help="既存ファイルがあっても雛形で上書きする",
+        help="既存の一般設定ファイルだけを雛形で上書きする。.env は保護する",
     )
 
     doctor_parser = subparsers.add_parser("doctor", help="起動前の状態を診断する")
@@ -265,11 +266,13 @@ def run_setup_command(force: bool) -> int:
             source=base_dir / ".env.example",
             target=base_dir / ".env",
             force=force,
+            allow_overwrite=False,
         ),
         ensure_template_file(
             source=base_dir / "config" / "workspaces.json.example",
             target=base_dir / "config" / "workspaces.json",
             force=force,
+            allow_overwrite=True,
         ),
     )
     for result in results:
@@ -526,7 +529,12 @@ def build_doctor_report(base_dir: Path | None = None) -> DoctorReport:
     )
 
 
-def ensure_template_file(source: Path, target: Path, force: bool) -> SetupFileResult:
+def ensure_template_file(
+    source: Path,
+    target: Path,
+    force: bool,
+    allow_overwrite: bool,
+) -> SetupFileResult:
     """雛形ファイルを必要に応じて配置する。
 
     Parameters
@@ -537,6 +545,8 @@ def ensure_template_file(source: Path, target: Path, force: bool) -> SetupFileRe
         配置先ファイル。
     force : bool
         既存ファイルを上書きするかどうか。
+    allow_overwrite : bool
+        対象ファイルの上書きを許可するかどうか。
 
     Returns
     -------
@@ -548,6 +558,8 @@ def ensure_template_file(source: Path, target: Path, force: bool) -> SetupFileRe
         return SetupFileResult(source=source, target=target, action="missing_template")
 
     target_exists = target.exists()
+    if target_exists and force and not allow_overwrite:
+        return SetupFileResult(source=source, target=target, action="protected")
     if target_exists and not force:
         return SetupFileResult(source=source, target=target, action="kept")
 
@@ -581,6 +593,8 @@ def format_setup_result(result: SetupFileResult, base_dir: Path) -> str:
         return f"overwritten {target_label} from {source_label}"
     if result.action == "kept":
         return f"kept {target_label}"
+    if result.action == "protected":
+        return f"protected {target_label}"
     return f"missing template {source_label}"
 
 

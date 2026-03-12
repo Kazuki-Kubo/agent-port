@@ -17,7 +17,7 @@ uv run agent-port setup
 - `.env`
 - `config/workspaces.json`
 
-既存ファイルを上書きしたい場合だけ `uv run agent-port setup --force` を使います。
+既存の `.env` は秘密情報保護のため上書きしません。`uv run agent-port setup --force` は `config/workspaces.json` のような一般設定ファイルだけを上書きします。
 
 ## 主な環境変数
 - `AGENT_PORT_CHAT_BACKEND`: 現在は `discord`
