@@ -85,9 +85,22 @@ class DiscordCodexBridgeClient(discord.Client):
         """
 
         if message.author.bot:
+            self._logger.debug(
+                "Ignoring bot message channel=%s author=%s",
+                getattr(message.channel, "id", "unknown"),
+                message.author,
+            )
             return
 
         is_bot_mentioned = self.user.mentioned_in(message) if self.user is not None else False
+        self._logger.info(
+            "Received Discord message channel=%s author=%s trigger_mode=%s mentioned=%s content=%r",
+            getattr(message.channel, "id", "unknown"),
+            message.author,
+            self._config.discord_trigger_mode,
+            is_bot_mentioned,
+            message.content,
+        )
         prompt = extract_discord_prompt(
             content=message.content,
             trigger_mode=self._config.discord_trigger_mode,
@@ -95,10 +108,15 @@ class DiscordCodexBridgeClient(discord.Client):
             is_bot_mentioned=is_bot_mentioned,
         )
         if prompt is None:
+            self._logger.info(
+                "Ignoring message channel=%s author=%s because trigger did not match or prompt was empty",
+                getattr(message.channel, "id", "unknown"),
+                message.author,
+            )
             if self._config.discord_trigger_mode == "mention" and is_bot_mentioned:
                 await send_discord_text(
                     message,
-                    "Bot をメンションしたあとに本文も送ってください。",
+                    "Botをメンションしたあとに本文も送ってください。",
                 )
             return
 
@@ -112,9 +130,20 @@ class DiscordCodexBridgeClient(discord.Client):
             try:
                 result = await self._codex_runner.run_prompt(prompt.prompt)
             except CodexExecutionError as exc:
+                self._logger.exception(
+                    "Codex execution failed channel=%s author=%s",
+                    getattr(message.channel, "id", "unknown"),
+                    message.author,
+                )
                 await send_discord_text(message, f"Codex 実行エラー:\n{exc}")
                 return
 
+        self._logger.info(
+            "Sending Discord reply channel=%s author=%s response_length=%s",
+            getattr(message.channel, "id", "unknown"),
+            message.author,
+            len(result.message),
+        )
         await send_discord_text(message, result.message)
 
 
@@ -207,7 +236,14 @@ async def send_discord_text(
         文字数制限に合わせて分割しながら返信する。
     """
 
-    for chunk in split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT):
+    chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
+    logging.getLogger(__name__).info(
+        "Replying to message_id=%s in channel=%s chunk_count=%s",
+        getattr(message, "id", "unknown"),
+        getattr(message.channel, "id", "unknown"),
+        len(chunks),
+    )
+    for chunk in chunks:
         await message.reply(chunk, mention_author=False)
 
 

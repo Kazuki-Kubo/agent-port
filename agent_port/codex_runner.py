@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import asyncio
+import logging
 import shutil
 import tempfile
 
@@ -49,6 +50,7 @@ class CodexRunner:
         """
 
         self._config = config
+        self._logger = logging.getLogger(__name__)
 
     async def run_prompt(self, prompt: str) -> CodexRunResult:
         """workspace を指定して Codex CLI を実行する。
@@ -82,6 +84,12 @@ class CodexRunner:
         )
         process: asyncio.subprocess.Process | None = None
         stdout_bytes = b""
+        self._logger.info(
+            "Starting Codex command workspace=%s timeout_seconds=%s prompt_length=%s",
+            self._config.agent_workspace,
+            self._config.codex_timeout_seconds,
+            len(normalized_prompt),
+        )
 
         try:
             process = await asyncio.create_subprocess_exec(
@@ -125,6 +133,11 @@ class CodexRunner:
                 "Codex CLI から最終メッセージを取得できませんでした。"
             )
 
+        self._logger.info(
+            "Codex command completed returncode=%s response_length=%s",
+            process.returncode,
+            len(final_message),
+        )
         return CodexRunResult(message=final_message, raw_output=raw_output)
 
 
