@@ -92,7 +92,7 @@ class DiscordCodexBridgeClient(discord.Client):
             )
             return
 
-        is_bot_mentioned = self.user.mentioned_in(message) if self.user is not None else False
+        is_bot_mentioned = self._is_trigger_mentioned(message)
         self._logger.info(
             "Received Discord message channel=%s author=%s trigger_mode=%s mentioned=%s content=%r",
             getattr(message.channel, "id", "unknown"),
@@ -145,6 +145,34 @@ class DiscordCodexBridgeClient(discord.Client):
             len(result.message),
         )
         await send_discord_text(message, result.message)
+
+    def _is_trigger_mentioned(self, message: discord.Message) -> bool:
+        """Bot へのユーザーメンションまたは Bot 所属ロールのメンションを判定する。
+
+        Parameters
+        ----------
+        message : discord.Message
+            判定対象の Discord メッセージ。
+
+        Returns
+        -------
+        bool
+            Bot 本体か、Bot が持つロールがメンションされていれば `True`。
+        """
+
+        if self.user is not None and self.user.mentioned_in(message):
+            return True
+
+        if message.guild is None or self.user is None:
+            return False
+
+        bot_member = message.guild.get_member(self.user.id)
+        if bot_member is None:
+            return False
+
+        bot_role_ids = {role.id for role in bot_member.roles}
+        mentioned_role_ids = {role.id for role in message.role_mentions}
+        return bool(bot_role_ids & mentioned_role_ids)
 
 
 def extract_discord_prompt(
