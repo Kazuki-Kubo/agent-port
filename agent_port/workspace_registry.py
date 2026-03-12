@@ -110,6 +110,17 @@ class WorkspaceRegistry:
 
         return tuple(self._workspaces.keys())
 
+    def list_workspaces(self) -> tuple[ManagedWorkspace, ...]:
+        """登録済み workspace 一覧を返す。
+
+        Returns
+        -------
+        tuple[ManagedWorkspace, ...]
+            登録順の workspace 一覧。
+        """
+
+        return tuple(self._workspaces.values())
+
     def is_empty(self) -> bool:
         """registry が空かどうかを返す。
 

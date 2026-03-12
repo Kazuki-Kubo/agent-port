@@ -1,13 +1,23 @@
 # 使い方
 
 ## セットアップ
-依存関係は `uv` で入れます。
+まず `uv` で依存を入れます。
 
 ```powershell
 uv sync --dev
 ```
 
-次に `.env.example` を参考に `.env` を作成し、`config/workspaces.json.example` を参考に `config/workspaces.json` を作成します。
+次に雛形ファイルを配置します。
+
+```powershell
+uv run agent-port setup
+```
+
+生成されるファイル:
+- `.env`
+- `config/workspaces.json`
+
+既存ファイルを上書きしたい場合だけ `uv run agent-port setup --force` を使います。
 
 ## 主な環境変数
 - `AGENT_PORT_CHAT_BACKEND`: 現在は `discord`
@@ -16,14 +26,14 @@ uv sync --dev
 - `AGENT_PORT_DISCORD_TRIGGER_MODE`: `mention` または `all`
 - `AGENT_PORT_WORKSPACE_REGISTRY`: workspace registry JSON の相対パス
 - `AGENT_PORT_DEFAULT_WORKSPACE`: 既定 workspace ID
-- `AGENT_PORT_DEFAULT_AGENT`: 既定 agent backend。現在は `codex`
+- `AGENT_PORT_DEFAULT_AGENT`: 既定 Agent backend。現在は `codex`
 - `AGENT_PORT_CODEX_COMMAND`: Codex CLI コマンド
 - `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行タイムアウト秒数
 - `AGENT_PORT_LOG_LEVEL`: 例 `INFO`
 
-`config/workspaces.json` には `workspace_id -> path` を定義します。`path` は registry ファイル基準の相対パスまたは絶対パスで書けます。ただし、`agent-port` 本体ディレクトリやその配下は指定できません。
+## workspace registry
+`config/workspaces.json` には `workspace_id -> path` を定義します。`path` は registry ファイル基準の相対パスまたは絶対パスで書けます。
 
-## workspace registry 例
 ```json
 {
   "workspaces": [
@@ -37,12 +47,23 @@ uv sync --dev
 }
 ```
 
-## 起動
+workspace は `agent-port` 本体 repo の外を指定してください。
+
+## 診断
+設定後は次の順で確認します。
+
 ```powershell
-uv run python main.py
+uv run agent-port doctor
+uv run agent-port config validate
+uv run agent-port workspace list
 ```
 
-返答は Agent が選びます。現在の Codex 実装では、返答の 1 行目に `[delivery:reply]` または `[delivery:thread]` を出す契約にしてあり、Discord 側がそれを解釈して通常返信かスレッド返信を切り替えます。
+## 起動
+```powershell
+uv run agent-port gateway
+```
+
+`mention` モードでは Bot 本体または Bot ロールへのメンション付きメッセージだけを受け付けます。Codex からの返答 1 行目に `[delivery:reply]` または `[delivery:thread]` がある場合、その指示に従って Discord へ返します。
 
 ## テスト
 ```powershell
