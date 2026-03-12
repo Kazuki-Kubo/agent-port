@@ -1,4 +1,4 @@
-"""Discord 用の prompt 抽出と返信制御をまとめるモジュール。"""
+"""Discord 入出力の補助関数をまとめる。"""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ DISCORD_MESSAGE_LIMIT = 2000
 
 @dataclass(frozen=True)
 class DiscordPrompt:
-    """Discord から取り出した実行用 prompt。
+    """Discord から抽出した prompt を表す。
 
     Attributes
     ----------
     prompt : str
-        Agent に渡す最終 prompt。
+        Agent に渡す本文。
     """
 
     prompt: str
@@ -25,14 +25,14 @@ class DiscordPrompt:
 
 @dataclass(frozen=True)
 class DiscordDelivery:
-    """Discord 返信方法と本文を表す。
+    """Discord への返信方法を表す。
 
     Attributes
     ----------
     mode : str
         `reply` または `thread`。
     message : str
-        ユーザーへ送る本文。
+        返信本文。
     """
 
     mode: str
@@ -40,20 +40,30 @@ class DiscordDelivery:
 
 
 def extract_discord_delivery(text: str) -> DiscordDelivery:
-    """Agent 応答から Discord の返信方法を抽出する。"""
+    """返信方法の制御行を解釈する。
 
-    normalized_text = text.strip()
-    if not normalized_text:
+    Parameters
+    ----------
+    text : str
+        Agent から返された本文。
+
+    Returns
+    -------
+    DiscordDelivery
+        返信方法と本文。
+    """
+
+    text = text.strip()
+    if not text:
         return DiscordDelivery(mode="reply", message="")
 
-    lines = normalized_text.splitlines()
+    lines = text.splitlines()
     first_line = lines[0].strip().lower()
     if first_line in {"[delivery:reply]", "[delivery:thread]"}:
         mode = "thread" if "thread" in first_line else "reply"
-        message = "\n".join(lines[1:]).strip()
-        return DiscordDelivery(mode=mode, message=message)
+        return DiscordDelivery(mode=mode, message="\n".join(lines[1:]).strip())
 
-    return DiscordDelivery(mode="reply", message=normalized_text)
+    return DiscordDelivery(mode="reply", message=text)
 
 
 def extract_discord_prompt(
@@ -62,38 +72,63 @@ def extract_discord_prompt(
     bot_user_id: int | None,
     is_bot_mentioned: bool,
 ) -> DiscordPrompt | None:
-    """Discord メッセージから Agent 用 prompt を取り出す。"""
+    """Discord メッセージから prompt を取り出す。
 
-    normalized_content = content.strip()
-    if not normalized_content:
+    Parameters
+    ----------
+    content : str
+        受信本文。
+    trigger_mode : str
+        `mention` または `all`。
+    bot_user_id : int | None
+        Bot の user ID。
+    is_bot_mentioned : bool
+        メンション判定結果。
+
+    Returns
+    -------
+    DiscordPrompt | None
+        抽出できた prompt。条件外なら `None`。
+    """
+
+    text = content.strip()
+    if not text:
         return None
 
     if trigger_mode == "all":
-        prompt = normalized_content
+        prompt = text
     elif trigger_mode == "mention":
         if bot_user_id is None or not is_bot_mentioned:
             return None
-        prompt = strip_bot_mention(
-            content=normalized_content,
-            bot_user_id=bot_user_id,
-        )
+        prompt = strip_bot_mention(content=text, bot_user_id=bot_user_id)
     else:
         return None
 
     if not prompt:
         return None
-
     return DiscordPrompt(prompt=prompt)
 
 
 def strip_bot_mention(content: str, bot_user_id: int) -> str:
-    """Bot メンションを除去した本文を返す。"""
+    """Bot メンションを本文から除去する。
 
-    mention_variants = [f"<@{bot_user_id}>", f"<@!{bot_user_id}>"]
-    normalized_content = content
-    for mention in mention_variants:
-        normalized_content = normalized_content.replace(mention, " ")
-    return normalized_content.strip()
+    Parameters
+    ----------
+    content : str
+        元の本文。
+    bot_user_id : int
+        Bot の user ID。
+
+    Returns
+    -------
+    str
+        メンション除去後の本文。
+    """
+
+    text = content
+    for mention in (f"<@{bot_user_id}>", f"<@!{bot_user_id}>"):
+        text = text.replace(mention, " ")
+    return text.strip()
 
 
 async def send_discord_response(
@@ -101,7 +136,22 @@ async def send_discord_response(
     text: str,
     delivery_mode: str,
 ) -> None:
-    """返信モードに応じて Discord へ送信する。"""
+    """返信方法に応じて Discord へ送信する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元メッセージ。
+    text : str
+        返信本文。
+    delivery_mode : str
+        `reply` または `thread`。
+
+    Returns
+    -------
+    None
+        Discord へ送信する。
+    """
 
     if delivery_mode != "thread":
         await send_discord_text(message, text)
@@ -119,7 +169,20 @@ async def send_discord_response(
 
 
 async def send_discord_text(message: discord.Message, text: str) -> None:
-    """Discord の文字数制限に合わせて返信する。"""
+    """通常返信として送信する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元メッセージ。
+    text : str
+        返信本文。
+
+    Returns
+    -------
+    None
+        必要なら分割して返信する。
+    """
 
     chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
     logging.getLogger(__name__).info(
@@ -133,23 +196,47 @@ async def send_discord_text(message: discord.Message, text: str) -> None:
 
 
 async def send_discord_thread(message: discord.Message, text: str) -> None:
-    """スレッドへ応答を送信する。"""
+    """スレッドへ送信する。
 
-    target_channel = await resolve_discord_thread(message)
+    Parameters
+    ----------
+    message : discord.Message
+        元メッセージ。
+    text : str
+        返信本文。
+
+    Returns
+    -------
+    None
+        必要なら分割してスレッドへ送る。
+    """
+
+    target = await resolve_discord_thread(message)
     chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
     logging.getLogger(__name__).info(
         "Sending thread response message_id=%s channel=%s thread=%s chunk_count=%s",
         getattr(message, "id", "unknown"),
         getattr(message.channel, "id", "unknown"),
-        getattr(target_channel, "id", "unknown"),
+        getattr(target, "id", "unknown"),
         len(chunks),
     )
     for chunk in chunks:
-        await target_channel.send(chunk)
+        await target.send(chunk)
 
 
 async def resolve_discord_thread(message: discord.Message) -> discord.abc.Messageable:
-    """応答先のスレッドを解決する。"""
+    """返信先スレッドを解決する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元メッセージ。
+
+    Returns
+    -------
+    discord.abc.Messageable
+        送信先スレッド。
+    """
 
     if isinstance(message.channel, discord.Thread):
         return message.channel
@@ -157,48 +244,81 @@ async def resolve_discord_thread(message: discord.Message) -> discord.abc.Messag
 
 
 def build_discord_thread_name(content: str) -> str:
-    """スレッド作成時に使うタイトルを組み立てる。"""
+    """スレッド名を作る。
 
-    normalized_content = " ".join(content.strip().split())
-    if not normalized_content:
+    Parameters
+    ----------
+    content : str
+        元メッセージ本文。
+
+    Returns
+    -------
+    str
+        最大 80 文字のスレッド名。
+    """
+
+    text = " ".join(content.strip().split())
+    if not text:
         return "agent-port thread"
-    return normalized_content[:80]
+    return text[:80]
 
 
 def split_discord_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
-    """長文を Discord 送信可能なチャンクへ分割する。"""
+    """Discord の制限に合わせて本文を分割する。
 
-    normalized_text = text.strip()
-    if not normalized_text:
+    Parameters
+    ----------
+    text : str
+        返信本文。
+    limit : int, default=DISCORD_MESSAGE_LIMIT
+        1 メッセージあたりの最大文字数。
+
+    Returns
+    -------
+    list[str]
+        分割後の本文一覧。
+    """
+
+    text = text.strip()
+    if not text:
         return ["(empty)"]
 
     chunks: list[str] = []
-    current_chunk = ""
-    for line in normalized_text.splitlines(keepends=True):
+    current = ""
+    for line in text.splitlines(keepends=True):
         if len(line) > limit:
-            if current_chunk:
-                chunks.append(current_chunk.rstrip())
-                current_chunk = ""
+            if current:
+                chunks.append(current.rstrip())
+                current = ""
             chunks.extend(_split_long_line(line=line, limit=limit))
             continue
 
-        if len(current_chunk) + len(line) > limit:
-            chunks.append(current_chunk.rstrip())
-            current_chunk = line
+        if len(current) + len(line) > limit:
+            chunks.append(current.rstrip())
+            current = line
             continue
 
-        current_chunk += line
+        current += line
 
-    if current_chunk:
-        chunks.append(current_chunk.rstrip())
-
+    if current:
+        chunks.append(current.rstrip())
     return chunks
 
 
 def _split_long_line(line: str, limit: int) -> list[str]:
-    """長すぎる 1 行を固定長で分割する。"""
+    """長すぎる 1 行を分割する。
 
-    chunks: list[str] = []
-    for start in range(0, len(line), limit):
-        chunks.append(line[start : start + limit].rstrip())
-    return chunks
+    Parameters
+    ----------
+    line : str
+        分割対象の 1 行。
+    limit : int
+        1 片あたりの最大文字数。
+
+    Returns
+    -------
+    list[str]
+        分割後の文字列一覧。
+    """
+
+    return [line[start : start + limit].rstrip() for start in range(0, len(line), limit)]

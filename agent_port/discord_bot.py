@@ -1,4 +1,4 @@
-"""Discord と Agent を中継するブリッジ。"""
+"""Discord と Agent を中継する client を定義する。"""
 
 from __future__ import annotations
 
@@ -6,53 +6,45 @@ import logging
 
 import discord
 
-from agent_port.router import AgentRouter, AgentRouterError
-from agent_port.codex import CodexExecutionError
+from agent_port.codex import CodexError
 from agent_port.config import AppConfig
 from agent_port.discord_io import (
-    DiscordPrompt,
-    build_discord_thread_name,
     extract_discord_delivery,
     extract_discord_prompt,
     send_discord_response,
     send_discord_text,
-    split_discord_message,
 )
+from agent_port.router import Router, RouterError
 
 
 class DiscordBot(discord.Client):
-    """Discord メッセージを Agent へ中継する Client。"""
+    """Discord と Agent の中継を行う Discord client。"""
 
-    def __init__(self, config: AppConfig, agent_router: AgentRouter) -> None:
-        """Discord bridge を初期化する。
+    def __init__(self, config: AppConfig, agent_router: Router) -> None:
+        """client を初期化する。
 
         Parameters
         ----------
         config : AppConfig
             Discord 側の設定。
-        agent_router : AgentRouter
-            Prompt を適切な Agent へ振り分ける router。
-
-        Returns
-        -------
-        None
-            Discord Client と依存オブジェクトを構築する。
+        agent_router : Router
+            prompt を agent に流す router。
         """
 
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
         self._config = config
-        self._agent_router = agent_router
+        self._router = agent_router
         self._logger = logging.getLogger(__name__)
 
     async def on_ready(self) -> None:
-        """Bot 接続完了時に設定をログ出力する。
+        """接続完了ログを出す。
 
         Returns
         -------
         None
-            接続済み Bot 名と trigger mode をログへ出力する。
+            Bot 名と既定設定をログに出す。
         """
 
         if self.user is None:
@@ -61,13 +53,13 @@ class DiscordBot(discord.Client):
         self._logger.info(
             "Discord Bot connected as %s with trigger_mode %s default_agent=%s default_workspace=%s",
             self.user,
-            self._config.discord_trigger_mode,
-            self._agent_router.get_default_backend(),
-            self._agent_router.get_default_workspace_id(),
+            self._config.discord_trigger,
+            self._router.default_backend(),
+            self._router.default_workspace(),
         )
 
     async def on_message(self, message: discord.Message) -> None:
-        """Discord メッセージを受信して Agent を実行する。
+        """受信メッセージを Agent に中継する。
 
         Parameters
         ----------
@@ -77,7 +69,7 @@ class DiscordBot(discord.Client):
         Returns
         -------
         None
-            条件に合うメッセージだけ中継し、同じチャンネルへ返信する。
+            条件に合うメッセージだけ中継する。
         """
 
         if message.author.bot:
@@ -88,20 +80,20 @@ class DiscordBot(discord.Client):
             )
             return
 
-        is_bot_mentioned = self._is_trigger_mentioned(message)
+        mentioned = self._is_trigger_mentioned(message)
         self._logger.info(
             "Received Discord message channel=%s author=%s trigger_mode=%s mentioned=%s content_length=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
-            self._config.discord_trigger_mode,
-            is_bot_mentioned,
+            self._config.discord_trigger,
+            mentioned,
             len(message.content),
         )
         prompt = extract_discord_prompt(
             content=message.content,
-            trigger_mode=self._config.discord_trigger_mode,
+            trigger_mode=self._config.discord_trigger,
             bot_user_id=self.user.id if self.user is not None else None,
-            is_bot_mentioned=is_bot_mentioned,
+            is_bot_mentioned=mentioned,
         )
         if prompt is None:
             self._logger.info(
@@ -109,11 +101,8 @@ class DiscordBot(discord.Client):
                 getattr(message.channel, "id", "unknown"),
                 message.author,
             )
-            if self._config.discord_trigger_mode == "mention" and is_bot_mentioned:
-                await send_discord_text(
-                    message,
-                    "Bot をメンションしたあとに本文も送ってください。",
-                )
+            if self._config.discord_trigger == "mention" and mentioned:
+                await send_discord_text(message, "Bot へのメンションと一緒に本文も送ってください。")
             return
 
         self._logger.info(
@@ -121,13 +110,13 @@ class DiscordBot(discord.Client):
             getattr(message.channel, "id", "unknown"),
             message.author,
             len(prompt.prompt),
-            self._agent_router.get_default_backend(),
-            self._agent_router.get_default_workspace_id(),
+            self._router.default_backend(),
+            self._router.default_workspace(),
         )
         async with message.channel.typing():
             try:
-                result = await self._agent_router.run_prompt(prompt.prompt)
-            except (AgentRouterError, CodexExecutionError) as exc:
+                result = await self._router.run_prompt(prompt.prompt)
+            except (RouterError, CodexError) as exc:
                 self._logger.exception(
                     "Agent execution failed channel=%s author=%s",
                     getattr(message.channel, "id", "unknown"),
@@ -136,36 +125,35 @@ class DiscordBot(discord.Client):
                 await send_discord_text(message, f"Agent 実行エラー:\n{exc}")
                 return
 
+        delivery = extract_discord_delivery(result.message)
         self._logger.info(
             "Sending Discord response channel=%s author=%s backend=%s workspace_id=%s response_length=%s delivery_mode=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             result.backend_name,
             result.workspace_id,
-            len(result.message),
-            extract_discord_delivery(result.message).mode,
+            len(delivery.message),
+            delivery.mode,
         )
-        delivery = extract_discord_delivery(result.message)
         await send_discord_response(message, delivery.message, delivery.mode)
 
     def _is_trigger_mentioned(self, message: discord.Message) -> bool:
-        """Bot または Bot ロールがメンションされたか判定する。
+        """Bot 本体か Bot ロールへのメンションを判定する。
 
         Parameters
         ----------
         message : discord.Message
-            判定対象の Discord メッセージ。
+            判定対象メッセージ。
 
         Returns
         -------
         bool
-            Bot 本体または Bot ロールがメンションされていれば `True`。
+            反応対象なら `True`。
         """
 
         if self.user is not None and self.user.mentioned_in(message):
             return True
-
-        if message.guild is None or self.user is None:
+        if self.user is None or message.guild is None:
             return False
 
         bot_member = message.guild.get_member(self.user.id)
@@ -175,5 +163,7 @@ class DiscordBot(discord.Client):
         bot_role_ids = {role.id for role in bot_member.roles}
         mentioned_role_ids = {role.id for role in message.role_mentions}
         return bool(bot_role_ids & mentioned_role_ids)
+
+
 DiscordAgentBridgeClient = DiscordBot
 DiscordCodexBridgeClient = DiscordBot

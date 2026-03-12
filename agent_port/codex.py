@@ -9,47 +9,34 @@ import shutil
 import tempfile
 
 from agent_port.agents import AgentRequest, AgentRunResult, AgentRunner
-from agent_port.config import CodexAgentConfig
+from agent_port.config import CodexConfig
 
-CODEX_DELIVERY_INSTRUCTION = """あなたは Discord 上で動く Agent です。
-
-出力ルール:
-- 1 行目には必ず `[delivery:reply]` または `[delivery:thread]` を書いてください。
-- 2 行目以降に、Discord へそのまま送る日本語の本文だけを書いてください。
-- 制御行を本文に繰り返さないでください。
-- 短い単発回答は `reply` を選んでください。
-- 複数ステップの調査、実装、レビュー、長い説明は `thread` を選んでください。
-
-ユーザー入力:
+DELIVERY_PROMPT = """Discord へ返す形式を守ってください。
+1. 1 行目には `[delivery:reply]` または `[delivery:thread]` を必ず書いてください。
+2. 2 行目以降に、Discord へ返す日本語の本文だけを書いてください。
+3. 余計な前置きや説明は入れないでください。
+4. 通常は `reply` を選び、長文や継続議論だけ `thread` を選んでください。
 """
 
 
-class CodexExecutionError(RuntimeError):
-    """Codex CLI の実行に失敗した場合の例外。"""
-
-
-CodexRunResult = AgentRunResult
+class CodexError(RuntimeError):
+    """Codex 実行時のエラーを表す。"""
 
 
 class CodexRunner(AgentRunner):
-    """Codex CLI を実行して最終応答を抽出する。"""
+    """Codex CLI で prompt を実行する。"""
 
-    def __init__(self, config: CodexAgentConfig) -> None:
-        """Codex 実行設定を保持する。
+    def __init__(self, config: CodexConfig) -> None:
+        """runner を初期化する。
 
         Parameters
         ----------
-        config : CodexAgentConfig
-            Codex backend 用の設定。
-
-        Returns
-        -------
-        None
-            Codex 実行時に利用する設定を保存する。
+        config : CodexConfig
+            Codex 設定。
         """
 
         self._config = config
-        self._logger = logging.getLogger(__name__)
+        self._log = logging.getLogger(__name__)
 
     def get_backend_name(self) -> str:
         """backend 名を返す。
@@ -57,129 +44,126 @@ class CodexRunner(AgentRunner):
         Returns
         -------
         str
-            この実装が扱う backend 名。
+            backend 名。
         """
 
-        return self._config.backend_name
+        return self._config.name
 
     async def run(self, request: AgentRequest) -> AgentRunResult:
-        """Codex を AgentRunner として実行する。
+        """request を Codex で実行する。
 
         Parameters
         ----------
         request : AgentRequest
-            Codex に渡す prompt と解決済み workspace を持つ要求。
+            実行要求。
 
         Returns
         -------
         AgentRunResult
-            Codex から抽出した最終メッセージ。
+            実行結果。
         """
 
-        if request.workspace_path is None or request.workspace_id is None:
-            raise CodexExecutionError("Codex 実行には解決済み workspace が必要です。")
+        if request.workspace_id is None or request.workspace_path is None:
+            raise CodexError("Codex 実行には workspace が必要です。")
 
         return await self.run_prompt(
             prompt=request.prompt,
             workspace_id=request.workspace_id,
-            workspace_path=request.workspace_path,
+            workspace_dir=request.workspace_path,
         )
 
     async def run_prompt(
         self,
         prompt: str,
         workspace_id: str,
-        workspace_path: Path,
-    ) -> CodexRunResult:
-        """workspace を指定して Codex CLI を実行する。
+        workspace_dir: Path,
+    ) -> AgentRunResult:
+        """workspace を指定して Codex を実行する。
 
         Parameters
         ----------
         prompt : str
-            Codex に渡すユーザー入力。
+            実行する本文。
         workspace_id : str
-            実行対象の workspace ID。
-        workspace_path : Path
-            実行対象の解決済み workspace path。
+            対象 workspace ID。
+        workspace_dir : Path
+            対象 workspace の実パス。
 
         Returns
         -------
-        CodexRunResult
-            最終メッセージと生出力。
+        AgentRunResult
+            実行結果。
         """
 
-        normalized_prompt = prompt.strip()
-        if not normalized_prompt:
-            raise CodexExecutionError("Codex に渡す prompt が空です。")
+        text = prompt.strip()
+        if not text:
+            raise CodexError("Codex に渡す prompt は空にできません。")
 
-        output_path = _create_output_path()
-        command = build_codex_exec_command(
+        out_file = _make_out_file()
+        cmd = build_codex_exec_command(
             codex_command=resolve_command_path(self._config.command),
-            workspace=workspace_path,
-            prompt=build_codex_prompt(normalized_prompt),
-            output_path=output_path,
+            workspace=workspace_dir,
+            prompt=build_codex_prompt(text),
+            output_path=out_file,
         )
-        process: asyncio.subprocess.Process | None = None
-        stdout_bytes = b""
-        self._logger.info(
-            "Starting Codex command workspace_id=%s workspace=%s timeout_seconds=%s prompt_length=%s",
+        proc: asyncio.subprocess.Process | None = None
+        stdout = b""
+        self._log.info(
+            "Starting Codex command workspace_id=%s workspace=%s timeout=%s prompt_length=%s",
             workspace_id,
-            workspace_path,
-            self._config.timeout_seconds,
-            len(normalized_prompt),
+            workspace_dir,
+            self._config.timeout,
+            len(text),
         )
 
         try:
-            process = await asyncio.create_subprocess_exec(
-                *command,
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT,
             )
-            stdout_bytes, _ = await asyncio.wait_for(
-                process.communicate(),
-                timeout=self._config.timeout_seconds,
+            stdout, _ = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=self._config.timeout,
             )
         except FileNotFoundError as exc:
-            raise CodexExecutionError(
+            raise CodexError(
                 f"Codex CLI コマンドが見つかりません: {self._config.command}"
             ) from exc
         except TimeoutError as exc:
-            if process is not None:
-                process.kill()
-                await process.communicate()
-            raise CodexExecutionError("Codex CLI の実行がタイムアウトしました。") from exc
+            if proc is not None:
+                proc.kill()
+                await proc.communicate()
+            raise CodexError("Codex CLI の実行がタイムアウトしました。") from exc
         finally:
-            raw_message = _read_output_file(output_path)
-            _remove_output_file(output_path)
+            out_text = _read_out_file(out_file)
+            _remove_out_file(out_file)
 
-        raw_output = stdout_bytes.decode("utf-8", errors="replace")
-        if process is None:
-            raise CodexExecutionError("Codex CLI プロセスを起動できませんでした。")
-
-        if process.returncode != 0:
-            raise CodexExecutionError(
+        raw = stdout.decode("utf-8", errors="replace")
+        if proc is None:
+            raise CodexError("Codex CLI プロセスを起動できませんでした。")
+        if proc.returncode != 0:
+            raise CodexError(
                 "Codex CLI の実行に失敗しました。\n"
-                f"returncode={process.returncode}\n"
-                f"{raw_output.strip()}"
+                f"returncode={proc.returncode}\n"
+                f"{raw.strip()}"
             )
 
-        final_message = _extract_last_message(raw_message)
-        if not final_message:
-            raise CodexExecutionError(
-                "Codex CLI から最終メッセージを抽出できませんでした。"
-            )
+        message = _last_message(out_text) or _last_message(raw)
+        if not message:
+            raise CodexError("Codex CLI から応答を取得できませんでした。")
 
-        self._logger.info(
+        self._log.info(
             "Codex command completed workspace_id=%s returncode=%s response_length=%s",
             workspace_id,
-            process.returncode,
-            len(final_message),
+            proc.returncode,
+            len(message),
         )
         return AgentRunResult(
             backend_name=self.get_backend_name(),
             workspace_id=workspace_id,
-            message=final_message,
-            raw_output=raw_output,
+            message=message,
+            raw_output=raw,
         )
 
 
@@ -189,7 +173,24 @@ def build_codex_exec_command(
     prompt: str,
     output_path: Path,
 ) -> list[str]:
-    """Codex CLI 実行コマンドを構築する。"""
+    """Codex 実行コマンドを組み立てる。
+
+    Parameters
+    ----------
+    codex_command : str
+        実行するコマンド。
+    workspace : Path
+        workspace の実パス。
+    prompt : str
+        Codex に渡す prompt。
+    output_path : Path
+        出力保存先。
+
+    Returns
+    -------
+    list[str]
+        `create_subprocess_exec` に渡す引数一覧。
+    """
 
     return [
         codex_command,
@@ -205,60 +206,114 @@ def build_codex_exec_command(
 
 
 def build_codex_prompt(prompt: str) -> str:
-    """Codex に渡す実行 prompt を組み立てる。
+    """Codex に渡す prompt を組み立てる。
 
     Parameters
     ----------
     prompt : str
-        ユーザーから受け取った元の prompt。
+        ユーザー本文。
 
     Returns
     -------
     str
-        配送モード制御の指示を前置した Codex 用 prompt。
+        配送ルールを前置きした prompt。
     """
 
-    return f"{CODEX_DELIVERY_INSTRUCTION}\n{prompt.strip()}"
+    return f"{DELIVERY_PROMPT}\n{prompt.strip()}"
 
 
 def resolve_command_path(command_name: str) -> str:
-    """実行可能なコマンドパスを解決する。"""
+    """実行可能な Codex コマンドパスを解決する。
 
-    resolved_path = shutil.which(command_name)
-    if resolved_path is not None:
-        return resolved_path
+    Parameters
+    ----------
+    command_name : str
+        設定上のコマンド名。
 
-    for candidate in (f"{command_name}.cmd", f"{command_name}.exe", f"{command_name}.bat"):
-        resolved_path = shutil.which(candidate)
-        if resolved_path is not None:
-            return resolved_path
+    Returns
+    -------
+    str
+        実行に使うコマンド。
+    """
+
+    resolved = shutil.which(command_name)
+    if resolved is not None:
+        return resolved
+
+    for suffix in (".cmd", ".exe", ".bat"):
+        resolved = shutil.which(f"{command_name}{suffix}")
+        if resolved is not None:
+            return resolved
 
     raise FileNotFoundError(command_name)
 
 
-def _create_output_path() -> Path:
-    """Codex 最終応答を書き出す一時ファイルを作る。"""
+def _make_out_file() -> Path:
+    """一時出力ファイルを作る。
 
-    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-        return Path(temp_file.name)
+    Returns
+    -------
+    Path
+        一時ファイルのパス。
+    """
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp:
+        return Path(temp.name)
 
 
-def _read_output_file(path: Path) -> str:
-    """一時ファイルから Codex の最終応答を読む。"""
+def _read_out_file(path: Path) -> str:
+    """一時出力ファイルを読む。
+
+    Parameters
+    ----------
+    path : Path
+        読み込むパス。
+
+    Returns
+    -------
+    str
+        ファイル内容。なければ空文字。
+    """
 
     if not path.exists():
         return ""
     return path.read_text(encoding="utf-8", errors="replace")
 
 
-def _remove_output_file(path: Path) -> None:
-    """一時ファイルを削除する。"""
+def _remove_out_file(path: Path) -> None:
+    """一時出力ファイルを削除する。
+
+    Parameters
+    ----------
+    path : Path
+        削除するパス。
+
+    Returns
+    -------
+    None
+        存在すれば削除する。
+    """
 
     if path.exists():
         path.unlink()
 
 
-def _extract_last_message(output_text: str) -> str:
-    """Codex の出力から最終メッセージを取り出す。"""
+def _last_message(output_text: str) -> str:
+    """最終メッセージ文字列を返す。
+
+    Parameters
+    ----------
+    output_text : str
+        生の出力文字列。
+
+    Returns
+    -------
+    str
+        整形後の文字列。
+    """
 
     return output_text.strip()
+
+
+CodexExecutionError = CodexError
+CodexRunResult = AgentRunResult

@@ -1,87 +1,101 @@
-"""Prompt を適切な Agent 実装と workspace へ振り分けるルータ。"""
+"""Prompt を agent と workspace に振り分ける。"""
 
 from __future__ import annotations
 
-from agent_port.registry import AgentRegistry, AgentRegistryError
 from agent_port.agents import AgentRequest, AgentRunResult
-from agent_port.workspaces import WorkspaceRegistry, WorkspaceRegistryError
+from agent_port.registry import AgentStore, RegistryError
+from agent_port.workspaces import WorkspaceError, Workspaces
 
 
-class AgentRouterError(RuntimeError):
-    """Agent の選択や workspace 解決に失敗した場合の例外。"""
+class RouterError(RuntimeError):
+    """routing 時のエラーを表す。"""
 
 
-class AgentRouter:
-    """既定 backend と既定 workspace に基づいて Agent を選択する。"""
+class Router:
+    """既定値を使って agent 実行先を決める。"""
 
     def __init__(
         self,
-        registry: AgentRegistry,
-        workspace_registry: WorkspaceRegistry,
-        default_backend: str,
-        default_workspace_id: str,
+        store: AgentStore | None = None,
+        workspaces: Workspaces | None = None,
+        default_agent: str | None = None,
+        default_workspace: str | None = None,
+        **legacy: object,
     ) -> None:
-        """Router を初期化する。
+        """router を初期化する。
 
         Parameters
         ----------
-        registry : AgentRegistry
-            利用可能な Agent 実装を保持する registry。
-        workspace_registry : WorkspaceRegistry
-            利用可能な workspace を保持する registry。
-        default_backend : str
-            backend 指定がない場合に使う既定 backend 名。
-        default_workspace_id : str
-            workspace 指定がない場合に使う既定 workspace ID。
-
-        Returns
-        -------
-        None
-            Agent と workspace の routing に必要な情報を保持する。
+        store : AgentStore
+            Agent 実行器の registry。
+        workspaces : Workspaces
+            workspace registry。
+        default_agent : str
+            既定 backend 名。
+        default_workspace : str
+            既定 workspace ID。
+        **legacy : object
+            旧引数名との互換用引数。
         """
 
-        self._registry = registry
-        self._workspace_registry = workspace_registry
-        self._default_backend = default_backend
-        self._default_workspace_id = default_workspace_id
+        resolved_store = store or legacy.get("registry")
+        resolved_workspaces = workspaces or legacy.get("workspace_registry")
+        resolved_default_agent = default_agent or legacy.get("default_backend")
+        resolved_default_workspace = (
+            default_workspace or legacy.get("default_workspace_id")
+        )
+
+        if not isinstance(resolved_store, AgentStore):
+            raise TypeError("store が必要です。")
+        if not isinstance(resolved_workspaces, Workspaces):
+            raise TypeError("workspaces が必要です。")
+        if not isinstance(resolved_default_agent, str):
+            raise TypeError("default_agent が必要です。")
+        if not isinstance(resolved_default_workspace, str):
+            raise TypeError("default_workspace が必要です。")
+
+        self._store = resolved_store
+        self._workspaces = resolved_workspaces
+        self._default_agent = resolved_default_agent
+        self._default_workspace = resolved_default_workspace
 
     async def run(self, request: AgentRequest) -> AgentRunResult:
-        """要求を適切な Agent と workspace へ振り分けて実行する。
+        """request を実行する。
 
         Parameters
         ----------
         request : AgentRequest
-            実行対象の prompt、backend、workspace 情報。
+            実行要求。
 
         Returns
         -------
         AgentRunResult
-            選択された Agent が返した実行結果。
+            実行結果。
         """
 
-        backend_name = request.backend_name or self._default_backend
-        workspace_id = request.workspace_id or self._default_workspace_id
+        backend = request.backend_name or self._default_agent
+        workspace_id = request.workspace_id or self._default_workspace
 
         try:
-            runner = self._registry.get_runner(backend_name)
-        except AgentRegistryError as exc:
-            raise AgentRouterError(str(exc)) from exc
+            runner = self._store.get(backend)
+        except RegistryError as exc:
+            raise RouterError(str(exc)) from exc
 
         try:
-            workspace = self._workspace_registry.get_workspace(workspace_id)
-        except WorkspaceRegistryError as exc:
-            raise AgentRouterError(str(exc)) from exc
+            workspace = self._workspaces.get(workspace_id)
+        except WorkspaceError as exc:
+            raise RouterError(str(exc)) from exc
 
-        if not workspace.supports_agent(backend_name):
-            raise AgentRouterError(
+        if not workspace.supports(backend):
+            raise RouterError(
                 "workspace がこの agent backend を許可していません: "
-                f"workspace_id={workspace_id} backend={backend_name}"
+                f"workspace_id={workspace_id} backend={backend}"
             )
 
         return await runner.run(
             AgentRequest(
                 prompt=request.prompt,
-                backend_name=backend_name,
+                backend_name=backend,
                 workspace_id=workspace_id,
                 workspace_path=workspace.path,
             )
@@ -93,21 +107,21 @@ class AgentRouter:
         backend_name: str | None = None,
         workspace_id: str | None = None,
     ) -> AgentRunResult:
-        """Prompt だけを指定して Agent を実行する。
+        """prompt だけ指定して実行する。
 
         Parameters
         ----------
         prompt : str
-            実行対象の入力テキスト。
+            実行する本文。
         backend_name : str | None, default=None
-            利用する backend 名。未指定時は既定 backend。
+            明示する backend 名。
         workspace_id : str | None, default=None
-            利用する workspace ID。未指定時は既定 workspace。
+            明示する workspace ID。
 
         Returns
         -------
         AgentRunResult
-            Agent が返した最終応答。
+            実行結果。
         """
 
         return await self.run(
@@ -118,24 +132,50 @@ class AgentRouter:
             )
         )
 
-    def get_default_backend(self) -> str:
+    def default_backend(self) -> str:
         """既定 backend 名を返す。
 
         Returns
         -------
         str
-            backend 指定がない場合に利用する backend 名。
+            既定 backend 名。
         """
 
-        return self._default_backend
+        return self._default_agent
 
-    def get_default_workspace_id(self) -> str:
+    def default_workspace(self) -> str:
         """既定 workspace ID を返す。
 
         Returns
         -------
         str
-            workspace 指定がない場合に利用する workspace ID。
+            既定 workspace ID。
         """
 
-        return self._default_workspace_id
+        return self._default_workspace
+
+    def get_default_backend(self) -> str:
+        """旧名の互換メソッド。
+
+        Returns
+        -------
+        str
+            `default_backend()` の結果。
+        """
+
+        return self.default_backend()
+
+    def get_default_workspace_id(self) -> str:
+        """旧名の互換メソッド。
+
+        Returns
+        -------
+        str
+            `default_workspace()` の結果。
+        """
+
+        return self.default_workspace()
+
+
+AgentRouter = Router
+AgentRouterError = RouterError

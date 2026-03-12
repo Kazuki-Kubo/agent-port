@@ -1,125 +1,115 @@
-"""workspace registry の設定読み込みを補助するモジュール。"""
+"""workspace registry の読込手順をまとめる。"""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 from agent_port.workspaces import (
-    WorkspaceRegistry,
-    WorkspaceRegistryError,
-    create_legacy_workspace_registry,
-    load_workspace_registry_from_json,
+    WorkspaceError,
+    Workspaces,
+    load_legacy_workspaces,
+    load_workspaces_json,
 )
 
 
-def load_workspace_registry_from_sources(
+def load_workspaces(
     base_dir: Path,
-    workspace_registry_path: str | None,
-    default_workspace_id: str | None,
-    legacy_workspace_value: str | None,
+    workspace_file: str | None,
+    default_workspace: str | None,
+    legacy_workspace: str | None,
     error_factory: type[Exception],
-) -> tuple[WorkspaceRegistry, Path | None]:
-    """workspace registry を読み込む。
+) -> tuple[Workspaces, Path | None]:
+    """workspace registry を読む。
 
     Parameters
     ----------
     base_dir : Path
         `agent-port` 本体ディレクトリ。
-    workspace_registry_path : str | None
-        registry JSON のパス文字列。
-    default_workspace_id : str | None
+    workspace_file : str | None
+        明示指定された registry ファイル。
+    default_workspace : str | None
         既定 workspace ID。
-    legacy_workspace_value : str | None
-        旧環境変数による直接 workspace path。
+    legacy_workspace : str | None
+        旧環境変数の workspace パス。
     error_factory : type[Exception]
-        エラー時に送出する例外型。
+        変換時に使う例外型。
 
     Returns
     -------
-    tuple[WorkspaceRegistry, Path | None]
-        読み込んだ registry と、使った registry ファイルパス。
+    tuple[Workspaces, Path | None]
+        読み込んだ registry と使用したファイルパス。
     """
 
-    resolved_registry_path: Path | None = None
-    registry = WorkspaceRegistry([])
+    file_path: Path | None = None
+    store = Workspaces([])
 
-    if workspace_registry_path is not None:
-        raw_registry_path = Path(workspace_registry_path)
-        resolved_registry_path = (
-            raw_registry_path.resolve()
-            if raw_registry_path.is_absolute()
-            else (base_dir / raw_registry_path).resolve()
-        )
-        registry = _load_registry_file(
-            registry_path=resolved_registry_path,
-            control_root=base_dir,
-            error_factory=error_factory,
-        )
+    if workspace_file is not None:
+        file_path = _resolve_file(base_dir=base_dir, value=workspace_file)
+        store = _load_file(file_path=file_path, control_root=base_dir, error_factory=error_factory)
     else:
-        default_registry_path = (base_dir / "config/workspaces.json").resolve()
-        if default_registry_path.exists():
-            resolved_registry_path = default_registry_path
-            registry = _load_registry_file(
-                registry_path=default_registry_path,
+        default_file = (base_dir / "config" / "workspaces.json").resolve()
+        if default_file.exists():
+            file_path = default_file
+            store = _load_file(
+                file_path=default_file,
                 control_root=base_dir,
                 error_factory=error_factory,
             )
 
-    if registry.is_empty() and legacy_workspace_value is not None:
-        legacy_workspace_id = default_workspace_id or "legacy"
+    if store.is_empty() and legacy_workspace is not None:
         try:
-            registry = create_legacy_workspace_registry(
-                workspace_id=legacy_workspace_id,
-                workspace_value=legacy_workspace_value,
+            store = load_legacy_workspaces(
+                workspace_id=default_workspace or "legacy",
+                workspace_value=legacy_workspace,
                 base_dir=base_dir,
                 control_root=base_dir,
             )
-        except WorkspaceRegistryError as exc:
+        except WorkspaceError as exc:
             raise error_factory(str(exc)) from exc
-        return registry, None
+        return store, None
 
-    if registry.is_empty():
+    if store.is_empty():
         raise error_factory(
-            "workspace registry が空です。config/workspaces.json を作成するか、"
-            "後方互換の AGENT_PORT_CODEX_WORKSPACE を設定してください。"
+            "workspace registry が空です。"
+            " `config/workspaces.json` を用意するか、旧設定の"
+            " `AGENT_PORT_CODEX_WORKSPACE` を指定してください。"
         )
 
-    return registry, resolved_registry_path
+    return store, file_path
 
 
-def resolve_default_workspace_id(
-    workspace_registry: WorkspaceRegistry,
-    requested_workspace_id: str | None,
-    legacy_workspace_value: str | None,
+def resolve_default_workspace(
+    workspaces: Workspaces,
+    requested_workspace: str | None,
+    legacy_workspace: str | None,
     error_factory: type[Exception],
 ) -> str:
-    """既定 workspace ID を確定する。
+    """既定 workspace ID を決める。
 
     Parameters
     ----------
-    workspace_registry : WorkspaceRegistry
+    workspaces : Workspaces
         読み込み済み registry。
-    requested_workspace_id : str | None
-        明示指定された既定 workspace ID。
-    legacy_workspace_value : str | None
-        旧環境変数による直接 path 指定。
+    requested_workspace : str | None
+        明示指定の workspace ID。
+    legacy_workspace : str | None
+        旧環境変数の workspace パス。
     error_factory : type[Exception]
-        エラー時に送出する例外型。
+        検証失敗時に使う例外型。
 
     Returns
     -------
     str
-        実際に採用する既定 workspace ID。
+        使用する workspace ID。
     """
 
-    if requested_workspace_id is not None:
-        return requested_workspace_id
+    if requested_workspace is not None:
+        return requested_workspace
 
-    workspace_ids = workspace_registry.list_workspace_ids()
-    if len(workspace_ids) == 1:
-        return workspace_ids[0]
-
-    if legacy_workspace_value is not None and "legacy" in workspace_ids:
+    ids = workspaces.ids()
+    if len(ids) == 1:
+        return ids[0]
+    if legacy_workspace is not None and "legacy" in ids:
         return "legacy"
 
     raise error_factory(
@@ -127,32 +117,53 @@ def resolve_default_workspace_id(
     )
 
 
-def _load_registry_file(
-    registry_path: Path,
-    control_root: Path,
-    error_factory: type[Exception],
-) -> WorkspaceRegistry:
-    """workspace registry JSON ファイルを読み込む。
+def _resolve_file(base_dir: Path, value: str) -> Path:
+    """registry ファイルの絶対パスを解決する。
 
     Parameters
     ----------
-    registry_path : Path
-        読み込む registry ファイルパス。
-    control_root : Path
-        `agent-port` 本体ディレクトリ。
-    error_factory : type[Exception]
-        エラー時に送出する例外型。
+    base_dir : Path
+        相対パス解決の基準。
+    value : str
+        ファイルパス文字列。
 
     Returns
     -------
-    WorkspaceRegistry
+    Path
+        解決済みの絶対パス。
+    """
+
+    raw = Path(value)
+    return raw.resolve() if raw.is_absolute() else (base_dir / raw).resolve()
+
+
+def _load_file(
+    file_path: Path,
+    control_root: Path,
+    error_factory: type[Exception],
+) -> Workspaces:
+    """registry ファイルを読む。
+
+    Parameters
+    ----------
+    file_path : Path
+        読み込む JSON ファイル。
+    control_root : Path
+        `agent-port` 本体ディレクトリ。
+    error_factory : type[Exception]
+        変換時に使う例外型。
+
+    Returns
+    -------
+    Workspaces
         読み込んだ registry。
     """
 
     try:
-        return load_workspace_registry_from_json(
-            registry_path=registry_path,
-            control_root=control_root,
-        )
-    except WorkspaceRegistryError as exc:
+        return load_workspaces_json(registry_path=file_path, control_root=control_root)
+    except WorkspaceError as exc:
         raise error_factory(str(exc)) from exc
+
+
+load_workspace_registry_from_sources = load_workspaces
+resolve_default_workspace_id = resolve_default_workspace

@@ -1,4 +1,4 @@
-"""環境変数からアプリケーション設定を読み込むモジュール。"""
+"""環境変数からアプリ設定を組み立てる。"""
 
 from __future__ import annotations
 
@@ -12,246 +12,229 @@ from agent_port.env import (
     read_optional_env,
     read_positive_int_env,
 )
-from agent_port.workspace_loader import (
-    load_workspace_registry_from_sources,
-    resolve_default_workspace_id,
-)
-from agent_port.workspaces import WorkspaceRegistry, WorkspaceRegistryError
+from agent_port.workspace_loader import load_workspaces, resolve_default_workspace
+from agent_port.workspaces import WorkspaceError, Workspaces
 
 
 class ConfigError(ValueError):
-    """設定値が不正な場合に送出する例外。"""
+    """設定値の検証失敗を表す。"""
 
 
 @dataclass(frozen=True)
-class AgentBackendConfig:
-    """Agent backend 共通設定を表す。
+class BackendConfig:
+    """backend 共通設定を表す。
 
     Attributes
     ----------
-    backend_name : str
-        backend の識別名。
+    name : str
+        backend 名。
     """
 
-    backend_name: str
+    name: str
 
 
 @dataclass(frozen=True)
-class CodexAgentConfig(AgentBackendConfig):
+class CodexConfig(BackendConfig):
     """Codex backend の設定を表す。
 
     Attributes
     ----------
-    backend_name : str
-        backend の識別名。通常は `codex`。
+    name : str
+        backend 名。
     command : str
-        実行する Codex CLI コマンド。
-    timeout_seconds : int
-        Codex 実行タイムアウト秒数。
+        Codex CLI コマンド。
+    timeout : int
+        タイムアウト秒数。
     """
 
     command: str
-    timeout_seconds: int
+    timeout: int
 
 
 @dataclass(frozen=True)
 class AppConfig:
-    """アプリケーション全体の設定を表す。
+    """アプリ全体の設定を表す。
 
     Attributes
     ----------
     base_dir : Path
         `agent-port` 本体ディレクトリ。
-    chat_backend : str
-        利用するチャット backend。
-    default_agent_backend : str
-        既定の agent backend 名。
-    default_workspace_id : str
-        既定の workspace ID。
-    workspace_registry_path : Path | None
-        workspace registry JSON のパス。legacy 指定のみの場合は `None`。
-    workspace_registry : WorkspaceRegistry
-        管理対象 workspace の registry。
-    discord_bot_token : str | None
+    chat : str
+        chat backend 名。
+    default_agent : str
+        既定 agent 名。
+    default_workspace : str
+        既定 workspace ID。
+    workspace_file : Path | None
+        使用した workspace registry ファイル。
+    workspaces : Workspaces
+        読み込み済み workspace registry。
+    discord_token : str | None
         Discord Bot token。
-    discord_application_id : str | None
+    discord_app_id : str | None
         Discord application ID。
-    discord_trigger_mode : str
-        `mention` または `all`。
-    codex_config : CodexAgentConfig
-        Codex backend 用設定。
+    discord_trigger : str
+        Discord の反応条件。`mention` または `all`。
+    codex : CodexConfig
+        Codex 設定。
     log_level : str
         ログレベル。
     """
 
     base_dir: Path
-    chat_backend: str
-    default_agent_backend: str
-    default_workspace_id: str
-    workspace_registry_path: Path | None
-    workspace_registry: WorkspaceRegistry
-    discord_bot_token: str | None
-    discord_application_id: str | None
-    discord_trigger_mode: str
-    codex_config: CodexAgentConfig
+    chat: str
+    default_agent: str
+    default_workspace: str
+    workspace_file: Path | None
+    workspaces: Workspaces
+    discord_token: str | None
+    discord_app_id: str | None
+    discord_trigger: str
+    codex: CodexConfig
     log_level: str
 
     @classmethod
     def from_env(cls, base_dir: Path | None = None) -> "AppConfig":
-        """環境変数から設定を構築する。
+        """環境変数から設定を読む。
 
         Parameters
         ----------
         base_dir : Path | None, default=None
-            本体ディレクトリ。未指定時はカレントディレクトリ。
+            基準ディレクトリ。`None` のときはカレントディレクトリ。
 
         Returns
         -------
         AppConfig
-            読み込んだ設定を反映したオブジェクト。
-
-        Raises
-        ------
-        ConfigError
-            必須設定不足や workspace 設定不正の場合。
+            構築済み設定。
         """
 
-        resolved_base_dir = (base_dir or Path.cwd()).resolve()
-        load_dotenv_file(base_dir=resolved_base_dir)
+        base = (base_dir or Path.cwd()).resolve()
+        load_dotenv_file(base)
 
-        chat_backend = os.getenv("AGENT_PORT_CHAT_BACKEND", "discord").strip()
-        default_agent_backend = read_optional_env("AGENT_PORT_DEFAULT_AGENT")
-        if default_agent_backend is None:
-            default_agent_backend = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex").strip()
+        chat = os.getenv("AGENT_PORT_CHAT_BACKEND", "discord").strip()
+        default_agent = read_optional_env("AGENT_PORT_DEFAULT_AGENT")
+        if default_agent is None:
+            default_agent = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex").strip()
 
-        default_workspace_id = read_optional_env("AGENT_PORT_DEFAULT_WORKSPACE")
-        workspace_registry_path = read_optional_env("AGENT_PORT_WORKSPACE_REGISTRY")
-        discord_bot_token = read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
-        discord_application_id = read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
-        discord_trigger_mode = read_choice_env(
+        requested_workspace = read_optional_env("AGENT_PORT_DEFAULT_WORKSPACE")
+        workspace_file = read_optional_env("AGENT_PORT_WORKSPACE_REGISTRY")
+        discord_token = read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
+        discord_app_id = read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
+        discord_trigger = read_choice_env(
             name="AGENT_PORT_DISCORD_TRIGGER_MODE",
             default="mention",
             allowed_values={"mention", "all"},
             error_factory=ConfigError,
         )
 
-        legacy_workspace_value = read_optional_env("AGENT_PORT_CODEX_WORKSPACE")
-        if legacy_workspace_value is None:
-            legacy_workspace_value = read_optional_env("AGENT_PORT_AGENT_WORKSPACE")
+        legacy_workspace = read_optional_env("AGENT_PORT_CODEX_WORKSPACE")
+        if legacy_workspace is None:
+            legacy_workspace = read_optional_env("AGENT_PORT_AGENT_WORKSPACE")
 
         codex_command = os.getenv("AGENT_PORT_CODEX_COMMAND", "codex").strip()
-        codex_timeout_seconds = read_positive_int_env(
+        if not codex_command:
+            raise ConfigError("AGENT_PORT_CODEX_COMMAND は空にできません。")
+
+        codex_timeout = read_positive_int_env(
             name="AGENT_PORT_CODEX_TIMEOUT_SECONDS",
             default=300,
             error_factory=ConfigError,
         )
-        log_level = os.getenv("AGENT_PORT_LOG_LEVEL", "INFO").strip()
+        log_level = os.getenv("AGENT_PORT_LOG_LEVEL", "INFO").strip() or "INFO"
 
-        if not codex_command:
-            raise ConfigError("AGENT_PORT_CODEX_COMMAND は空文字にできません。")
-
-        codex_config = CodexAgentConfig(
-            backend_name="codex",
-            command=codex_command,
-            timeout_seconds=codex_timeout_seconds,
-        )
-
-        workspace_registry, resolved_registry_path = load_workspace_registry_from_sources(
-            base_dir=resolved_base_dir,
-            workspace_registry_path=workspace_registry_path,
-            default_workspace_id=default_workspace_id,
-            legacy_workspace_value=legacy_workspace_value,
+        codex = CodexConfig(name="codex", command=codex_command, timeout=codex_timeout)
+        workspaces, resolved_file = load_workspaces(
+            base_dir=base,
+            workspace_file=workspace_file,
+            default_workspace=requested_workspace,
+            legacy_workspace=legacy_workspace,
             error_factory=ConfigError,
         )
-        resolved_default_workspace_id = resolve_default_workspace_id(
-            workspace_registry=workspace_registry,
-            requested_workspace_id=default_workspace_id,
-            legacy_workspace_value=legacy_workspace_value,
+        default_workspace = resolve_default_workspace(
+            workspaces=workspaces,
+            requested_workspace=requested_workspace,
+            legacy_workspace=legacy_workspace,
             error_factory=ConfigError,
         )
 
-        if chat_backend == "discord" and not discord_bot_token:
+        if chat == "discord" and not discord_token:
             raise ConfigError(
-                "AGENT_PORT_CHAT_BACKEND=discord の場合は "
-                "AGENT_PORT_DISCORD_BOT_TOKEN が必須です。"
+                "AGENT_PORT_CHAT_BACKEND=discord のときは "
+                "AGENT_PORT_DISCORD_BOT_TOKEN が必要です。"
             )
-        if default_agent_backend not in cls._build_agent_config_map(codex_config):
-            raise ConfigError(
-                "現在利用可能な Agent backend は codex のみです。"
-            )
+
+        backends = cls._backend_map(codex)
+        if default_agent not in backends:
+            raise ConfigError("現在利用できる Agent backend は codex のみです。")
 
         try:
-            workspace_registry.get_workspace(resolved_default_workspace_id)
-        except WorkspaceRegistryError as exc:
+            workspaces.get(default_workspace)
+        except WorkspaceError as exc:
             raise ConfigError(str(exc)) from exc
 
         return cls(
-            base_dir=resolved_base_dir,
-            chat_backend=chat_backend,
-            default_agent_backend=default_agent_backend,
-            default_workspace_id=resolved_default_workspace_id,
-            workspace_registry_path=resolved_registry_path,
-            workspace_registry=workspace_registry,
-            discord_bot_token=discord_bot_token,
-            discord_application_id=discord_application_id,
-            discord_trigger_mode=discord_trigger_mode,
-            codex_config=codex_config,
+            base_dir=base,
+            chat=chat,
+            default_agent=default_agent,
+            default_workspace=default_workspace,
+            workspace_file=resolved_file,
+            workspaces=workspaces,
+            discord_token=discord_token,
+            discord_app_id=discord_app_id,
+            discord_trigger=discord_trigger,
+            codex=codex,
             log_level=log_level,
         )
 
     @staticmethod
-    def _build_agent_config_map(
-        codex_config: CodexAgentConfig,
-    ) -> dict[str, AgentBackendConfig]:
-        """backend 名ごとの設定マップを返す。
+    def _backend_map(codex: CodexConfig) -> dict[str, BackendConfig]:
+        """利用可能 backend 一覧を返す。
 
         Parameters
         ----------
-        codex_config : CodexAgentConfig
-            Codex backend 用設定。
+        codex : CodexConfig
+            Codex 設定。
 
         Returns
         -------
-        dict[str, AgentBackendConfig]
-            backend 名をキーにした設定マップ。
+        dict[str, BackendConfig]
+            backend 名と設定の対応。
         """
 
-        return {"codex": codex_config}
+        return {"codex": codex}
 
-    def get_agent_config(self, backend_name: str) -> AgentBackendConfig:
-        """指定 backend の設定を返す。
+    def get_backend(self, name: str) -> BackendConfig:
+        """backend 設定を返す。
 
         Parameters
         ----------
-        backend_name : str
-            参照対象の backend 名。
+        name : str
+            backend 名。
 
         Returns
         -------
-        AgentBackendConfig
-            backend に対応する設定。
+        BackendConfig
+            対応する設定。
         """
 
-        agent_configs = self.list_agent_configs()
-        if backend_name not in agent_configs:
-            raise ConfigError(
-                f"未対応の Agent backend が指定されました: {backend_name}"
-            )
-        return agent_configs[backend_name]
+        backends = self.list_backends_config()
+        if name not in backends:
+            raise ConfigError(f"未対応の Agent backend です: {name}")
+        return backends[name]
 
-    def list_agent_configs(self) -> dict[str, AgentBackendConfig]:
-        """利用可能な backend 設定一覧を返す。
+    def list_backends_config(self) -> dict[str, BackendConfig]:
+        """backend 設定一覧を返す。
 
         Returns
         -------
-        dict[str, AgentBackendConfig]
-            backend 名ごとの設定マップ。
+        dict[str, BackendConfig]
+            backend 設定一覧。
         """
 
-        return self._build_agent_config_map(self.codex_config)
+        return self._backend_map(self.codex)
 
-    def list_agent_backends(self) -> tuple[str, ...]:
-        """利用可能な backend 名一覧を返す。
+    def list_backends(self) -> tuple[str, ...]:
+        """backend 名一覧を返す。
 
         Returns
         -------
@@ -259,58 +242,241 @@ class AppConfig:
             backend 名一覧。
         """
 
-        return tuple(self.list_agent_configs().keys())
+        return tuple(self.list_backends_config().keys())
 
-    def list_workspace_ids(self) -> tuple[str, ...]:
-        """利用可能な workspace ID 一覧を返す。
+    def list_agent_backends(self) -> tuple[str, ...]:
+        """旧名の互換メソッド。
 
         Returns
         -------
         tuple[str, ...]
-            registry に登録された workspace ID 一覧。
+            `list_backends()` の結果。
         """
 
-        return self.workspace_registry.list_workspace_ids()
+        return self.list_backends()
 
-    def get_workspace_path(self, workspace_id: str) -> Path:
-        """workspace_id から path を解決する。
+    def list_workspace_ids(self) -> tuple[str, ...]:
+        """workspace ID 一覧を返す。
+
+        Returns
+        -------
+        tuple[str, ...]
+            workspace ID 一覧。
+        """
+
+        return self.workspaces.ids()
+
+    def get_workspace_dir(self, workspace_id: str) -> Path:
+        """workspace の実パスを返す。
 
         Parameters
         ----------
         workspace_id : str
-            解決対象の workspace ID。
+            workspace ID。
 
         Returns
         -------
         Path
-            workspace ディレクトリの絶対パス。
+            対応する実パス。
         """
 
         try:
-            return self.workspace_registry.get_workspace(workspace_id).path
-        except WorkspaceRegistryError as exc:
+            return self.workspaces.get(workspace_id).path
+        except WorkspaceError as exc:
             raise ConfigError(str(exc)) from exc
 
     @property
-    def agent_backend(self) -> str:
-        """後方互換用に既定 backend 名を返す。"""
+    def backend(self) -> str:
+        """既定 backend 名を返す。
 
-        return self.default_agent_backend
+        Returns
+        -------
+        str
+            既定 backend 名。
+        """
+
+        return self.default_agent
 
     @property
-    def agent_workspace(self) -> Path:
-        """後方互換用に既定 workspace の path を返す。"""
+    def workspace(self) -> Path:
+        """既定 workspace の実パスを返す。
 
-        return self.get_workspace_path(self.default_workspace_id)
+        Returns
+        -------
+        Path
+            既定 workspace の実パス。
+        """
+
+        return self.get_workspace_dir(self.default_workspace)
 
     @property
     def codex_command(self) -> str:
-        """後方互換用に Codex コマンド名を返す。"""
+        """Codex コマンドを返す。
 
-        return self.codex_config.command
+        Returns
+        -------
+        str
+            Codex コマンド。
+        """
+
+        return self.codex.command
+
+    @property
+    def codex_timeout(self) -> int:
+        """Codex タイムアウト秒数を返す。
+
+        Returns
+        -------
+        int
+            タイムアウト秒数。
+        """
+
+        return self.codex.timeout
+
+    @property
+    def chat_backend(self) -> str:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str
+            `chat` の値。
+        """
+
+        return self.chat
+
+    @property
+    def default_agent_backend(self) -> str:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str
+            `default_agent` の値。
+        """
+
+        return self.default_agent
+
+    @property
+    def default_workspace_id(self) -> str:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str
+            `default_workspace` の値。
+        """
+
+        return self.default_workspace
+
+    @property
+    def workspace_registry_path(self) -> Path | None:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        Path | None
+            `workspace_file` の値。
+        """
+
+        return self.workspace_file
+
+    @property
+    def workspace_registry(self) -> Workspaces:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        Workspaces
+            `workspaces` の値。
+        """
+
+        return self.workspaces
+
+    @property
+    def discord_bot_token(self) -> str | None:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str | None
+            `discord_token` の値。
+        """
+
+        return self.discord_token
+
+    @property
+    def discord_application_id(self) -> str | None:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str | None
+            `discord_app_id` の値。
+        """
+
+        return self.discord_app_id
+
+    @property
+    def discord_trigger_mode(self) -> str:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str
+            `discord_trigger` の値。
+        """
+
+        return self.discord_trigger
+
+    @property
+    def codex_config(self) -> CodexConfig:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        CodexConfig
+            `codex` の値。
+        """
+
+        return self.codex
+
+    @property
+    def agent_backend(self) -> str:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        str
+            `default_agent` の値。
+        """
+
+        return self.default_agent
+
+    @property
+    def agent_workspace(self) -> Path:
+        """旧名の互換プロパティ。
+
+        Returns
+        -------
+        Path
+            `workspace` の値。
+        """
+
+        return self.workspace
 
     @property
     def codex_timeout_seconds(self) -> int:
-        """後方互換用に Codex timeout を返す。"""
+        """旧名の互換プロパティ。
 
-        return self.codex_config.timeout_seconds
+        Returns
+        -------
+        int
+            `codex_timeout` の値。
+        """
+
+        return self.codex_timeout
+
+
+AgentBackendConfig = BackendConfig
+CodexAgentConfig = CodexConfig

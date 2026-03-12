@@ -1,4 +1,4 @@
-"""codex モジュールの動作を検証するテスト。"""
+"""codex モジュールを確認する。"""
 
 from pathlib import Path
 
@@ -11,11 +11,17 @@ from agent_port.codex import (
     build_codex_prompt,
     resolve_command_path,
 )
-from agent_port.config import CodexAgentConfig
+from agent_port.config import CodexConfig
 
 
-def test_build_codex_exec_command_includes_workspace_and_output() -> None:
-    """Codex 実行コマンドに必要な引数が含まれることを検証する。"""
+def test_build_codex_exec_command_has_workspace_and_output() -> None:
+    """実行コマンドに workspace と出力先が含まれることを確認する。
+
+    Returns
+    -------
+    None
+        `codex exec` に必要な引数が揃うことを確認する。
+    """
 
     workspace = Path("workspace").resolve()
     output_path = Path("output.txt").resolve()
@@ -35,13 +41,33 @@ def test_build_codex_exec_command_includes_workspace_and_output() -> None:
     assert command[-1] == "say hello"
 
 
-def test_resolve_command_path_uses_windows_fallback_extension(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`which` が空でも `.cmd` 拡張子で解決できることを検証する。"""
+def test_resolve_command_path_uses_windows_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`.cmd` などの拡張子付き実行ファイルを解決できることを確認する。
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        `shutil.which` を差し替える fixture。
+
+    Returns
+    -------
+    None
+        Windows 形式の実行ファイルも見つけられることを確認する。
+    """
 
     def fake_which(command_name: str) -> str | None:
-        """テスト用の疑似 which 実装を返す。"""
+        """`which` の代替関数。
+
+        Parameters
+        ----------
+        command_name : str
+            探索するコマンド名。
+
+        Returns
+        -------
+        str | None
+            `codex.cmd` だけ仮のパスを返す。
+        """
 
         if command_name == "codex.cmd":
             return "C:/tools/codex.cmd"
@@ -52,25 +78,31 @@ def test_resolve_command_path_uses_windows_fallback_extension(
     assert resolve_command_path("codex") == "C:/tools/codex.cmd"
 
 
-def test_codex_returns_backend_name() -> None:
-    """CodexRunner が自身の backend 名を返すことを検証する。"""
+def test_codex_runner_returns_backend_name() -> None:
+    """runner が backend 名を返すことを確認する。
 
-    runner = CodexRunner(
-        CodexAgentConfig(
-            backend_name="codex",
-            command="codex",
-            timeout_seconds=300,
-        )
-    )
+    Returns
+    -------
+    None
+        `codex` が返ることを確認する。
+    """
+
+    runner = CodexRunner(CodexConfig(name="codex", command="codex", timeout=300))
 
     assert runner.get_backend_name() == "codex"
 
 
-def test_build_codex_prompt_includes_delivery_instruction() -> None:
-    """Codex prompt に配送モード指示を含めることを検証する。"""
+def test_build_codex_prompt_adds_delivery_rules() -> None:
+    """prompt に配送ルールが付くことを確認する。
 
-    prompt = build_codex_prompt("実装内容を説明して")
+    Returns
+    -------
+    None
+        `reply` と `thread` の両方の指示が含まれることを確認する。
+    """
+
+    prompt = build_codex_prompt("本文を返して")
 
     assert "[delivery:reply]" in prompt
     assert "[delivery:thread]" in prompt
-    assert prompt.rstrip().endswith("実装内容を説明して")
+    assert prompt.rstrip().endswith("本文を返して")

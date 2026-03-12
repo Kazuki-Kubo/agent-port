@@ -1,10 +1,8 @@
-"""discord_bot モジュールの振る舞いを検証するテスト。"""
+"""discord_bot と discord_io の補助処理を確認する。"""
 
 from pathlib import Path
 
-from agent_port.registry import AgentRegistry
-from agent_port.router import AgentRouter
-from agent_port.config import AppConfig, CodexAgentConfig
+from agent_port.config import AppConfig, CodexConfig
 from agent_port.discord_bot import DiscordBot
 from agent_port.discord_io import (
     build_discord_thread_name,
@@ -12,11 +10,19 @@ from agent_port.discord_io import (
     extract_discord_prompt,
     split_discord_message,
 )
+from agent_port.registry import AgentRegistry
+from agent_port.router import AgentRouter
 from agent_port.workspaces import ManagedWorkspace, WorkspaceRegistry
 
 
-def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
-    """先頭メンション付き本文を prompt として抽出できることを検証する。"""
+def test_extract_discord_prompt_strips_leading_mention() -> None:
+    """先頭メンションを外して prompt を作ることを確認する。
+
+    Returns
+    -------
+    None
+        Bot メンションを除いた本文が得られることを確認する。
+    """
 
     prompt = extract_discord_prompt(
         content="<@123> hello world",
@@ -29,8 +35,14 @@ def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
     assert prompt.prompt == "hello world"
 
 
-def test_extract_discord_prompt_returns_none_when_mention_mode_has_no_mention() -> None:
-    """mention モードでメンションがない場合は無視することを検証する。"""
+def test_extract_discord_prompt_returns_none_without_mention() -> None:
+    """mention モードでメンションがないと無視することを確認する。
+
+    Returns
+    -------
+    None
+        `None` が返ることを確認する。
+    """
 
     prompt = extract_discord_prompt(
         content="hello world",
@@ -42,8 +54,14 @@ def test_extract_discord_prompt_returns_none_when_mention_mode_has_no_mention() 
     assert prompt is None
 
 
-def test_extract_discord_prompt_returns_full_text_in_all_mode() -> None:
-    """all モードでは本文全体を prompt として扱うことを検証する。"""
+def test_extract_discord_prompt_uses_all_mode() -> None:
+    """all モードでは本文全体を使うことを確認する。
+
+    Returns
+    -------
+    None
+        本文がそのまま prompt になることを確認する。
+    """
 
     prompt = extract_discord_prompt(
         content="hello world",
@@ -56,8 +74,14 @@ def test_extract_discord_prompt_returns_full_text_in_all_mode() -> None:
     assert prompt.prompt == "hello world"
 
 
-def test_extract_discord_prompt_accepts_mention_not_at_start() -> None:
-    """本文途中のメンションでも prompt を抽出できることを検証する。"""
+def test_extract_discord_prompt_accepts_mid_mention() -> None:
+    """本文中のメンションでも受け付けることを確認する。
+
+    Returns
+    -------
+    None
+        メンション位置に依存しないことを確認する。
+    """
 
     prompt = extract_discord_prompt(
         content="hello <@123> world",
@@ -71,8 +95,14 @@ def test_extract_discord_prompt_accepts_mention_not_at_start() -> None:
     assert "world" in prompt.prompt
 
 
-def test_split_discord_message_splits_long_text_into_chunks() -> None:
-    """長文が Discord 制限以下のチャンクへ分割されることを検証する。"""
+def test_split_discord_message_splits_long_text() -> None:
+    """長文が分割されることを確認する。
+
+    Returns
+    -------
+    None
+        Discord の文字数制限を超えないことを確認する。
+    """
 
     chunks = split_discord_message(text="a" * 4500, limit=2000)
 
@@ -81,7 +111,13 @@ def test_split_discord_message_splits_long_text_into_chunks() -> None:
 
 
 def test_extract_discord_delivery_reads_thread_directive() -> None:
-    """Agent の配送指示から thread モードを抽出できることを検証する。"""
+    """配送制御行から thread を読めることを確認する。
+
+    Returns
+    -------
+    None
+        mode と本文が正しく分かれることを確認する。
+    """
 
     delivery = extract_discord_delivery("[delivery:thread]\n詳細はスレッドで返します。")
 
@@ -89,53 +125,66 @@ def test_extract_discord_delivery_reads_thread_directive() -> None:
     assert delivery.message == "詳細はスレッドで返します。"
 
 
-def test_extract_discord_delivery_defaults_to_reply_without_directive() -> None:
-    """制御行がない場合は通常返信へフォールバックすることを検証する。"""
+def test_extract_discord_delivery_defaults_to_reply() -> None:
+    """制御行がなければ reply 扱いになることを確認する。
 
-    delivery = extract_discord_delivery("通常の返答です。")
+    Returns
+    -------
+    None
+        mode が `reply` になることを確認する。
+    """
+
+    delivery = extract_discord_delivery("通常の返信です。")
 
     assert delivery.mode == "reply"
-    assert delivery.message == "通常の返答です。"
+    assert delivery.message == "通常の返信です。"
 
 
-def test_build_discord_thread_name_truncates_long_content() -> None:
-    """長い本文から Discord 用の短いスレッド名を作ることを検証する。"""
+def test_build_discord_thread_name_truncates() -> None:
+    """スレッド名が 80 文字以内になることを確認する。
+
+    Returns
+    -------
+    None
+        長文でも 80 文字に切られることを確認する。
+    """
 
     thread_name = build_discord_thread_name("a" * 120)
 
     assert len(thread_name) == 80
 
 
-def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
-    """Bot ロールメンションでも trigger 判定が真になることを検証する。"""
+def test_is_trigger_mentioned_accepts_role_mention() -> None:
+    """Bot ロールへのメンションでも反応することを確認する。
 
-    workspace_registry = WorkspaceRegistry(
-        [
-            ManagedWorkspace(
-                workspace_id="sample",
-                path=Path("..").resolve(),
-                allowed_agents=("codex",),
-            )
-        ]
-    )
+    Returns
+    -------
+    None
+        ロール ID が一致すると `True` になることを確認する。
+    """
+
     config = AppConfig(
         base_dir=Path(".").resolve(),
-        chat_backend="discord",
-        default_agent_backend="codex",
-        default_workspace_id="sample",
-        workspace_registry_path=None,
-        workspace_registry=workspace_registry,
-        discord_bot_token="token",
-        discord_application_id=None,
-        discord_trigger_mode="mention",
-        codex_config=CodexAgentConfig(
-            backend_name="codex",
-            command="codex",
-            timeout_seconds=300,
+        chat="discord",
+        default_agent="codex",
+        default_workspace="sample",
+        workspace_file=None,
+        workspaces=WorkspaceRegistry(
+            [
+                ManagedWorkspace(
+                    workspace_id="sample",
+                    path=Path("..").resolve(),
+                    allowed_agents=("codex",),
+                )
+            ]
         ),
+        discord_token="token",
+        discord_app_id=None,
+        discord_trigger="mention",
+        codex=CodexConfig(name="codex", command="codex", timeout=300),
         log_level="INFO",
     )
-    client = BotForTest(config=config, workspace_registry=workspace_registry)
+    client = BotForTest(config=config)
 
     message = DummyMessage(
         mentioned=False,
@@ -143,97 +192,156 @@ def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
         role_mention_ids=[20],
     )
 
-    assert client.is_trigger_mentioned_for_test(message) is True
+    assert client.is_trigger_mentioned(message) is True
 
 
 class BotForTest:
-    """`_is_trigger_mentioned` を直接検証するためのテスト用ラッパー。"""
+    """`_is_trigger_mentioned` を呼ぶためのラッパー。"""
 
-    def __init__(self, config: AppConfig, workspace_registry: WorkspaceRegistry) -> None:
-        """Discord bridge の最小状態を構築する。
+    def __init__(self, config: AppConfig) -> None:
+        """テスト用 client を組み立てる。
 
         Parameters
         ----------
         config : AppConfig
-            テスト用設定。
-        workspace_registry : WorkspaceRegistry
-            テスト用 workspace registry。
-
-        Returns
-        -------
-        None
-            private メソッド呼び出しに必要な状態だけを埋める。
+            利用する設定。
         """
 
+        workspaces = config.workspaces
         self._client = object.__new__(DiscordBot)
         self._client._config = config
-        self._client._agent_router = AgentRouter(
+        self._client._router = AgentRouter(
             registry=AgentRegistry(),
-            workspace_registry=workspace_registry,
+            workspace_registry=workspaces,
             default_backend="codex",
             default_workspace_id="sample",
         )
         self._client._logger = None
         self._client._connection = DummyConnection(user=DummyUser(999))
 
-    def is_trigger_mentioned_for_test(self, message: "DummyMessage") -> bool:
-        """内部判定メソッドを呼び出す。"""
+    def is_trigger_mentioned(self, message: "DummyMessage") -> bool:
+        """private メソッドを呼び出す。
+
+        Parameters
+        ----------
+        message : DummyMessage
+            テスト用メッセージ。
+
+        Returns
+        -------
+        bool
+            判定結果。
+        """
 
         return self._client._is_trigger_mentioned(message)
 
 
 class DummyConnection:
-    """`discord.Client.user` 解決用のダミー接続。"""
+    """`discord.Client.user` 用のダミー接続。"""
 
     def __init__(self, user: "DummyUser") -> None:
-        """ダミー user を保持する。"""
+        """user を保持する。
+
+        Parameters
+        ----------
+        user : DummyUser
+            Bot ユーザー。
+        """
 
         self.user = user
 
 
 class DummyUser:
-    """最小限の Bot user 振る舞いを持つダミー。"""
+    """最小限の Bot ユーザー。"""
 
     def __init__(self, user_id: int) -> None:
-        """ユーザー ID を保持する。"""
+        """ユーザー ID を保持する。
+
+        Parameters
+        ----------
+        user_id : int
+            user ID。
+        """
 
         self.id = user_id
 
     def mentioned_in(self, message: "DummyMessage") -> bool:
-        """本文中のメンション判定結果を返す。"""
+        """本文メンション判定を返す。
+
+        Parameters
+        ----------
+        message : DummyMessage
+            判定対象メッセージ。
+
+        Returns
+        -------
+        bool
+            メッセージ側の判定値。
+        """
 
         return message.mentioned
 
 
 class DummyRole:
-    """ロール ID だけを持つダミー role。"""
+    """最小限の role。"""
 
     def __init__(self, role_id: int) -> None:
-        """ロール ID を保持する。"""
+        """role ID を保持する。
+
+        Parameters
+        ----------
+        role_id : int
+            role ID。
+        """
 
         self.id = role_id
 
 
 class DummyMember:
-    """Bot が持つロール一覧を表すダミー member。"""
+    """role 一覧だけを持つ member。"""
 
     def __init__(self, role_ids: list[int]) -> None:
-        """ロール ID 一覧を role オブジェクトへ変換する。"""
+        """role 一覧を作る。
+
+        Parameters
+        ----------
+        role_ids : list[int]
+            role ID 一覧。
+        """
 
         self.roles = [DummyRole(role_id) for role_id in role_ids]
 
 
 class DummyGuild:
-    """Bot member を返すだけのダミー guild。"""
+    """member 取得だけを持つ guild。"""
 
     def __init__(self, bot_user_id: int, role_ids: list[int]) -> None:
-        """Bot user と member 情報を保持する。"""
+        """Bot 情報を保持する。
+
+        Parameters
+        ----------
+        bot_user_id : int
+            Bot user ID。
+        role_ids : list[int]
+            Bot が持つ role ID 一覧。
+        """
 
         self._bot_user_id = bot_user_id
         self._member = DummyMember(role_ids)
 
     def get_member(self, user_id: int) -> DummyMember | None:
-        """指定 user が Bot の場合だけ member を返す。"""
+        """Bot member を返す。
+
+        Parameters
+        ----------
+        user_id : int
+            取得する user ID。
+
+        Returns
+        -------
+        DummyMember | None
+            一致時は member、それ以外は `None`。
+        """
 
         if user_id == self._bot_user_id:
             return self._member
@@ -241,7 +349,7 @@ class DummyGuild:
 
 
 class DummyMessage:
-    """trigger 判定に必要な属性だけを持つダミーメッセージ。"""
+    """判定に必要な最小限のメッセージ。"""
 
     def __init__(
         self,
@@ -249,7 +357,17 @@ class DummyMessage:
         guild: DummyGuild | None,
         role_mention_ids: list[int],
     ) -> None:
-        """テスト用メッセージ状態を保持する。"""
+        """メッセージ属性を保持する。
+
+        Parameters
+        ----------
+        mentioned : bool
+            本文メンション判定。
+        guild : DummyGuild | None
+            所属 guild。
+        role_mention_ids : list[int]
+            メッセージ中の role メンション一覧。
+        """
 
         self.mentioned = mentioned
         self.guild = guild

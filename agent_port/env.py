@@ -1,9 +1,9 @@
-"""環境変数と `.env` 読み込みを補助するモジュール。"""
+"""環境変数と `.env` 読み込みを補助する。"""
 
 from __future__ import annotations
 
-from pathlib import Path
 import os
+from pathlib import Path
 
 
 def load_dotenv_file(base_dir: Path) -> None:
@@ -17,7 +17,7 @@ def load_dotenv_file(base_dir: Path) -> None:
     Returns
     -------
     None
-        未設定の環境変数だけを `.env` から補う。
+        未設定の環境変数だけを `.env` から補完する。
     """
 
     dotenv_path = base_dir / ".env"
@@ -25,22 +25,20 @@ def load_dotenv_file(base_dir: Path) -> None:
         return
 
     for line in dotenv_path.read_text(encoding="utf-8").splitlines():
-        normalized_line = line.strip()
-        if not normalized_line or normalized_line.startswith("#"):
-            continue
-        if "=" not in normalized_line:
+        text = line.strip()
+        if not text or text.startswith("#") or "=" not in text:
             continue
 
-        key, value = normalized_line.split("=", 1)
-        env_name = key.strip()
-        if not env_name:
+        key, value = text.split("=", 1)
+        name = key.strip()
+        if not name:
             continue
 
-        os.environ.setdefault(env_name, value.strip())
+        os.environ.setdefault(name, value.strip())
 
 
 def read_optional_env(name: str) -> str | None:
-    """環境変数を空白除去して読み込む。
+    """任意の環境変数を読む。
 
     Parameters
     ----------
@@ -50,14 +48,14 @@ def read_optional_env(name: str) -> str | None:
     Returns
     -------
     str | None
-        値があれば空白除去後の文字列、空なら `None`。
+        空文字を除いた値。未設定なら `None`。
     """
 
     value = os.getenv(name)
     if value is None:
         return None
-    stripped_value = value.strip()
-    return stripped_value or None
+    value = value.strip()
+    return value or None
 
 
 def read_positive_int_env(
@@ -65,7 +63,7 @@ def read_positive_int_env(
     default: int,
     error_factory: type[Exception],
 ) -> int:
-    """正の整数環境変数を読み込む。
+    """正の整数の環境変数を読む。
 
     Parameters
     ----------
@@ -74,7 +72,7 @@ def read_positive_int_env(
     default : int
         未設定時の既定値。
     error_factory : type[Exception]
-        変換失敗時に送出する例外型。
+        変換失敗時に使う例外型。
 
     Returns
     -------
@@ -82,19 +80,19 @@ def read_positive_int_env(
         読み込んだ整数値。
     """
 
-    raw_value = os.getenv(name)
-    if raw_value is None:
+    value = os.getenv(name)
+    if value is None:
         return default
 
     try:
-        parsed_value = int(raw_value)
+        number = int(value)
     except ValueError as exc:
         raise error_factory(f"{name} は整数で指定してください。") from exc
 
-    if parsed_value < 1:
+    if number < 1:
         raise error_factory(f"{name} は 1 以上で指定してください。")
 
-    return parsed_value
+    return number
 
 
 def read_choice_env(
@@ -103,7 +101,7 @@ def read_choice_env(
     allowed_values: set[str],
     error_factory: type[Exception],
 ) -> str:
-    """候補内の値だけ許可する環境変数を読み込む。
+    """候補の中から 1 つ選ぶ環境変数を読む。
 
     Parameters
     ----------
@@ -112,21 +110,18 @@ def read_choice_env(
     default : str
         未設定時の既定値。
     allowed_values : set[str]
-        許可する値一覧。
+        許可する値の集合。
     error_factory : type[Exception]
-        検証失敗時に送出する例外型。
+        検証失敗時に使う例外型。
 
     Returns
     -------
     str
-        許可された値。
+        検証済みの値。
     """
 
-    raw_value = os.getenv(name, default).strip()
-    if raw_value not in allowed_values:
-        allowed_values_text = ", ".join(sorted(allowed_values))
-        raise error_factory(
-            f"{name} は {allowed_values_text} のいずれかで指定してください。"
-        )
-
-    return raw_value
+    value = os.getenv(name, default).strip()
+    if value not in allowed_values:
+        choices = ", ".join(sorted(allowed_values))
+        raise error_factory(f"{name} は {choices} のいずれかで指定してください。")
+    return value

@@ -1,4 +1,4 @@
-"""Agent 実行インターフェースをまとめるパッケージ。"""
+"""Agent 共通型を公開する。"""
 
 from agent_port.agents.base import AgentRequest, AgentRunResult, AgentRunner
 

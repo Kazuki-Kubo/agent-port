@@ -1,4 +1,4 @@
-"""CLI の挙動を検証するテスト。"""
+"""CLI の挙動を確認する。"""
 
 from pathlib import Path
 
@@ -7,23 +7,21 @@ import pytest
 from agent_port import cli
 
 
-def test_main_runs_gateway_without_args(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """引数なし実行が gateway 起動へ委譲されることを検証する。
+def test_main_runs_gateway_without_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    """引数なしで gateway が起動されることを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        CLI 呼び出し先を差し替える fixture。
+        関数差し替え用 fixture。
 
     Returns
     -------
     None
-        `run_gateway_command` の戻り値がそのまま返ることを確認する。
+        `run_gateway()` が呼ばれることを確認する。
     """
 
-    monkeypatch.setattr(cli, "run_gateway_command", lambda: 7)
+    monkeypatch.setattr(cli, "run_gateway", lambda: 7)
 
     assert cli.main([]) == 7
 
@@ -33,35 +31,29 @@ def test_config_validate_ok(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`config validate` が有効設定で成功することを検証する。
+    """`config validate` が正常終了することを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        環境変数を差し替える fixture。
+        環境差し替え用 fixture。
     tmp_path : Path
-        テスト用一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を検査する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        終了コード 0 と `valid` 出力を確認する。
+        `valid` と表示されることを確認する。
     """
 
     workspace_root = tmp_path.parent / "cli-valid-workspace"
     workspace_root.mkdir()
-    registry_path = _write_workspace_registry(
-        base_dir=tmp_path,
-        workspace_path=workspace_root,
-    )
+    registry_path = _write_workspaces(tmp_path, workspace_root)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
-    monkeypatch.setenv(
-        "AGENT_PORT_WORKSPACE_REGISTRY",
-        str(registry_path.relative_to(tmp_path)),
-    )
+    monkeypatch.setenv("AGENT_PORT_WORKSPACE_REGISTRY", str(registry_path.relative_to(tmp_path)))
     monkeypatch.setenv("AGENT_PORT_DEFAULT_WORKSPACE", "sample")
 
     exit_code = cli.main(["config", "validate"])
@@ -76,35 +68,29 @@ def test_workspace_list_shows_workspace(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`workspace list` が登録済み workspace を表示することを検証する。
+    """`workspace list` で一覧が表示されることを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        環境変数を差し替える fixture。
+        環境差し替え用 fixture。
     tmp_path : Path
-        テスト用一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を検査する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        一覧出力に workspace ID と path が含まれることを確認する。
+        workspace ID と path が出力されることを確認する。
     """
 
     workspace_root = tmp_path.parent / "cli-list-workspace"
     workspace_root.mkdir()
-    registry_path = _write_workspace_registry(
-        base_dir=tmp_path,
-        workspace_path=workspace_root,
-    )
+    registry_path = _write_workspaces(tmp_path, workspace_root)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
-    monkeypatch.setenv(
-        "AGENT_PORT_WORKSPACE_REGISTRY",
-        str(registry_path.relative_to(tmp_path)),
-    )
+    monkeypatch.setenv("AGENT_PORT_WORKSPACE_REGISTRY", str(registry_path.relative_to(tmp_path)))
     monkeypatch.setenv("AGENT_PORT_DEFAULT_WORKSPACE", "sample")
 
     exit_code = cli.main(["workspace", "list"])
@@ -120,21 +106,21 @@ def test_config_file_shows_legacy_env(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """legacy workspace 指定では `config file` が legacy 表示になることを検証する。
+    """legacy 設定時は `(legacy env)` が出ることを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        環境変数を差し替える fixture。
+        環境差し替え用 fixture。
     tmp_path : Path
-        テスト用一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を検査する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        `legacy env` 表示を確認する。
+        registry ファイルではなく legacy 表示になることを確認する。
     """
 
     workspace_root = tmp_path.parent / "cli-legacy-workspace"
@@ -155,21 +141,21 @@ def test_setup_creates_files(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`setup` が雛形ファイルを配置することを検証する。
+    """`setup` が雛形ファイルを作ることを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        作業ディレクトリを差し替える fixture。
+        作業ディレクトリ変更用 fixture。
     tmp_path : Path
-        テスト用の一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を取得する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        `.env` と `config/workspaces.json` が作成されることを確認する。
+        `.env` と `config/workspaces.json` が作られることを確認する。
     """
 
     (tmp_path / ".env.example").write_text("AGENT_PORT_CHAT_BACKEND=discord\n", encoding="utf-8")
@@ -192,21 +178,21 @@ def test_setup_force_keeps_existing_dotenv(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`setup --force` でも既存 `.env` を上書きしないことを検証する。
+    """`setup --force` でも `.env` は保護されることを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        作業ディレクトリを差し替える fixture。
+        作業ディレクトリ変更用 fixture。
     tmp_path : Path
-        テスト用の一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を取得する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        `.env` の内容が保持され、保護メッセージが出ることを確認する。
+        `.env` は保持され、workspace 定義は上書きされることを確認する。
     """
 
     env_path = tmp_path / ".env"
@@ -232,69 +218,67 @@ def test_doctor_reports_ok(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """`doctor` が正常な設定を `ok` と診断することを検証する。
+    """`doctor` が正常状態を表示することを確認する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        環境変数と作業ディレクトリを差し替える fixture。
+        環境差し替え用 fixture。
     tmp_path : Path
-        テスト用の一時ディレクトリ。
+        テスト用ディレクトリ。
     capsys : pytest.CaptureFixture[str]
-        標準出力を取得する fixture。
+        標準出力取得用 fixture。
 
     Returns
     -------
     None
-        正常終了し、`ok` と既定 workspace ID が出力されることを確認する。
+        `ok` と既定 workspace が出力されることを確認する。
     """
 
     workspace_root = tmp_path.parent / "cli-doctor-workspace"
     workspace_root.mkdir()
-    registry_path = _write_workspace_registry(
-        base_dir=tmp_path,
-        workspace_path=workspace_root,
-    )
+    registry_path = _write_workspaces(tmp_path, workspace_root)
     (tmp_path / ".env").write_text("AGENT_PORT_CHAT_BACKEND=console\n", encoding="utf-8")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
-    monkeypatch.setenv(
-        "AGENT_PORT_WORKSPACE_REGISTRY",
-        str(registry_path.relative_to(tmp_path)),
-    )
+    monkeypatch.setenv("AGENT_PORT_WORKSPACE_REGISTRY", str(registry_path.relative_to(tmp_path)))
     monkeypatch.setenv("AGENT_PORT_DEFAULT_WORKSPACE", "sample")
     monkeypatch.setenv("AGENT_PORT_CODEX_COMMAND", "codex")
-    codex_executable = workspace_root / "codex.exe"
-    codex_executable.write_text("", encoding="utf-8")
-    monkeypatch.setattr(cli.shutil, "which", lambda command: str(codex_executable) if command == "codex" else None)
+    codex_exe = workspace_root / "codex.exe"
+    codex_exe.write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        cli.shutil,
+        "which",
+        lambda command: str(codex_exe) if command == "codex" else None,
+    )
 
     exit_code = cli.main(["doctor"])
 
     captured = capsys.readouterr()
     assert exit_code == 0
     assert "ok" in captured.out
-    assert "default_workspace_id=sample" in captured.out
+    assert "default_workspace=sample" in captured.out
 
 
-def _write_workspace_registry(base_dir: Path, workspace_path: Path) -> Path:
-    """CLI テスト用 workspace registry を作成する。
+def _write_workspaces(base_dir: Path, workspace_path: Path) -> Path:
+    """workspace registry を作る。
 
     Parameters
     ----------
     base_dir : Path
-        registry を置く基準ディレクトリ。
+        registry を置くディレクトリ。
     workspace_path : Path
-        登録する workspace path。
+        登録する workspace の実パス。
 
     Returns
     -------
     Path
-        作成した registry ファイルパス。
+        作成した registry ファイル。
     """
 
-    registry_dir = base_dir / "config"
-    registry_dir.mkdir()
-    registry_path = registry_dir / "workspaces.json"
+    config_dir = base_dir / "config"
+    config_dir.mkdir()
+    registry_path = config_dir / "workspaces.json"
     registry_path.write_text(
         (
             '{"workspaces":['

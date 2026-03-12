@@ -1,9 +1,9 @@
 # 仕様
 
-このドキュメントは仕様の入口です。詳細は `docs/specs/` 配下に分割して管理します。
+このドキュメントは仕様の入口です。詳細は `docs/specs/` に分けて管理します。
 
-- `docs/specs/overview.md`: 目的、対象範囲、設計原則
-- `docs/specs/architecture.md`: コンポーネント構成、責務、拡張ポイント
-- `docs/specs/flow.md`: メッセージ処理、セッション管理、エラー処理
+- `docs/specs/overview.md`: 目的、責務、非目標
+- `docs/specs/architecture.md`: 層構造、routing、workspace 設計
+- `docs/specs/flow.md`: メッセージ処理、session、エラー処理
 
-新しい仕様を追加するときは、内容ごとに短い名前で分割してください。パスは必ずリポジトリ基準の相対パスで記載します。
+仕様が大きくなったら、意味が分かる短い名前でファイルを追加してください。パスはリポジトリ基準の相対パスで記述します。

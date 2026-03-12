@@ -1,4 +1,4 @@
-"""複数 Agent を共通で扱うための基底型を定義するモジュール。"""
+"""Agent の共通型を定義する。"""
 
 from __future__ import annotations
 
@@ -14,13 +14,13 @@ class AgentRequest:
     Attributes
     ----------
     prompt : str
-        Agent に渡す入力テキスト。
-    backend_name : str | None
-        利用する Agent backend 名。`None` の場合は既定 backend を利用する。
-    workspace_id : str | None
-        実行対象の workspace ID。`None` の場合は既定 workspace を利用する。
-    workspace_path : Path | None
-        解決済みの workspace path。router が埋める。
+        Agent に渡す本文。
+    backend_name : str | None, default=None
+        実行する backend 名。`None` のときは既定値を使う。
+    workspace_id : str | None, default=None
+        対象 workspace の ID。`None` のときは既定値を使う。
+    workspace_path : Path | None, default=None
+        解決済みの workspace パス。
     """
 
     prompt: str
@@ -36,13 +36,13 @@ class AgentRunResult:
     Attributes
     ----------
     backend_name : str
-        実際に応答を返した Agent backend 名。
+        実行した backend 名。
     workspace_id : str
-        実行に使った workspace ID。
+        実行した workspace ID。
     message : str
-        チャットツールへ返す最終メッセージ。
+        ユーザーへ返す本文。
     raw_output : str
-        Agent CLI や SDK から得た生出力。
+        Agent 側の生出力。
     """
 
     backend_name: str
@@ -52,7 +52,7 @@ class AgentRunResult:
 
 
 class AgentRunner(ABC):
-    """個別 Agent 実装が従う共通インターフェース。"""
+    """Agent 実行器の共通インターフェース。"""
 
     @abstractmethod
     def get_backend_name(self) -> str:
@@ -61,7 +61,7 @@ class AgentRunner(ABC):
         Returns
         -------
         str
-            Registry から識別するための backend 名。
+            registry に登録する backend 名。
         """
 
     @abstractmethod
@@ -71,10 +71,10 @@ class AgentRunner(ABC):
         Parameters
         ----------
         request : AgentRequest
-            実行対象の prompt、backend、workspace 情報を持つ要求。
+            実行要求。
 
         Returns
         -------
         AgentRunResult
-            Agent から得た最終応答。
+            実行結果。
         """

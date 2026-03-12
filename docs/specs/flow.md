@@ -1,59 +1,31 @@
 # 処理フロー
 
 ## 基本フロー
-1. Chat Adapter がチャットメッセージを受信します。
-2. Chat Adapter が設定済みトリガー条件に一致するメッセージだけを内部イベントへ変換して Core に渡します。
-3. Core が `Conversation` を特定し、対応する `Session` を取得または作成します。
-4. Core が環境変数から読み込んだ設定と入力を Agent Adapter 向けの要求へ変換します。
-5. Core が `workspace_id` から外部 workspace を解決し、Agent Adapter がその workspace で Agent を実行します。
-6. Core が応答をチャット向けに整形します。
-7. Chat Adapter が元の会話へ応答を送信または更新します。
+1. Chat Adapter がチャットメッセージを受け取る
+2. Chat Adapter が trigger 条件に一致する本文だけを取り出して Core に渡す
+3. Core が backend と workspace を決定する
+4. Core が解決済み workspace を付けて Agent Adapter を実行する
+5. Agent Adapter が Agent を実行し、返答本文を返す
+6. Chat Adapter が返答をチャットツールへ送る
 
-## イベントの最小集合
-初期仕様で扱う内部イベントは次を最小集合とします。
-
-- `user_message_received`
-- `agent_run_started`
-- `agent_output_delta`
-- `agent_output_completed`
-- `agent_run_failed`
-- `session_reset_requested`
+## 内部イベント
+最小実装では明示的なイベントバスはまだ持たず、次の段階で整理します。
+- `message_received`
+- `agent_started`
+- `agent_finished`
+- `agent_failed`
 
 ## エラー処理
-- チャット受信に失敗した場合はログへ残し、再試行可能な失敗かを区別します。
-- Agent 実行に失敗した場合は、会話へ失敗通知を返します。
-- 一時的な失敗と恒久的な失敗を区別できる形で内部イベントを設計します。
+- チャット受信条件を満たさない場合は何も返さない
+- Agent 実行に失敗した場合は、チャット側へエラーを返す
+- スレッド返信に失敗した場合は通常返信へフォールバックする
 
-## セッション管理
-- `Conversation` 単位で `Session` を保持します。
-- セッションには少なくとも会話 ID、利用中の Agent 種別、最終更新時刻を保持します。
-- 必要に応じて、その会話で利用する `workspace_id` も保持します。
-- 明示的なリセット操作で、該当会話の `Session` を破棄または再初期化します。
+## session と会話
+最小実装では、Discord の 1 メッセージを 1 回の Agent 実行として扱います。今後は `channel/thread -> session` の対応を Core で保持し、会話ごとの agent 切替や `workspace_id` の保持を追加します。
 
-初期仕様では、`Conversation` を一意に識別できる相対的な内部キーを持ちます。たとえば Discord では、ギルド ID、チャンネル ID、スレッド ID の組み合わせを内部で 1 つのキーへ正規化します。
+## 返信形式
+Agent は返答 1 行目に次のどちらかを返します。
+- `[delivery:reply]`
+- `[delivery:thread]`
 
-## メッセージ整形
-- Chat Adapter へ返す前に、Agent 出力をチャットで読みやすい単位に整形します。
-- ストリーム対応があるチャットでは途中経過更新を使います。
-- ストリーム非対応のチャットでは最終結果のみ送信します。
-
-## 初期コマンド案
-初期バージョンでは次の操作を想定します。
-
-- 通常メッセージ送信: Agent への問い合わせ
-- セッションリセット: 会話に紐づく状態の初期化
-- ステータス確認: 利用中の Agent や接続状態の確認
-- workspace 設定: その会話で利用する `workspace_id` の変更または確認
-
-## 初期実装の優先順位
-1. Discord からテキストを受信し、Codex CLI へ渡せること
-2. Codex CLI の応答を Discord へ返せること
-3. 会話ごとにセッションを維持できること
-4. Adapter の差し替えで他チャットツール、他 Agent へ拡張できる構造を保つこと
-
-## 将来拡張
-- 添付ファイルの受け渡し
-- 複数 Agent 切り替え
-- 権限設定
-- 実行キュー
-- 監査ログ
+Chat Adapter はこの制御行を読み、通常返信またはスレッド返信を選びます。
