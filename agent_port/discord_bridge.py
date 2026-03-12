@@ -27,6 +27,22 @@ class DiscordPrompt:
     prompt: str
 
 
+@dataclass(frozen=True)
+class DiscordDelivery:
+    """Discord 返信方法と本文を表す。
+
+    Attributes
+    ----------
+    mode : str
+        `reply` または `thread`。
+    message : str
+        ユーザーへ送る本文。
+    """
+
+    mode: str
+    message: str
+
+
 class DiscordAgentBridgeClient(discord.Client):
     """Discord メッセージを Agent へ中継する Client。"""
 
@@ -142,13 +158,15 @@ class DiscordAgentBridgeClient(discord.Client):
                 return
 
         self._logger.info(
-            "Sending Discord reply channel=%s author=%s backend=%s response_length=%s",
+            "Sending Discord response channel=%s author=%s backend=%s response_length=%s delivery_mode=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             result.backend_name,
             len(result.message),
+            extract_discord_delivery(result.message).mode,
         )
-        await send_discord_text(message, result.message)
+        delivery = extract_discord_delivery(result.message)
+        await send_discord_response(message, delivery.message, delivery.mode)
 
     def _is_trigger_mentioned(self, message: discord.Message) -> bool:
         """Bot または Bot ロールがメンションされたか判定する。
@@ -180,6 +198,34 @@ class DiscordAgentBridgeClient(discord.Client):
 
 
 DiscordCodexBridgeClient = DiscordAgentBridgeClient
+
+
+def extract_discord_delivery(text: str) -> DiscordDelivery:
+    """Agent 応答から Discord の返信方法を抽出する。
+
+    Parameters
+    ----------
+    text : str
+        Agent が返した生メッセージ。
+
+    Returns
+    -------
+    DiscordDelivery
+        返信方法とユーザー向け本文。
+    """
+
+    normalized_text = text.strip()
+    if not normalized_text:
+        return DiscordDelivery(mode="reply", message="")
+
+    lines = normalized_text.splitlines()
+    first_line = lines[0].strip().lower()
+    if first_line in {"[delivery:reply]", "[delivery:thread]"}:
+        mode = "thread" if "thread" in first_line else "reply"
+        message = "\n".join(lines[1:]).strip()
+        return DiscordDelivery(mode=mode, message=message)
+
+    return DiscordDelivery(mode="reply", message=normalized_text)
 
 
 def extract_discord_prompt(
@@ -277,6 +323,111 @@ async def send_discord_text(message: discord.Message, text: str) -> None:
     )
     for chunk in chunks:
         await message.reply(chunk, mention_author=False)
+
+
+async def send_discord_response(
+    message: discord.Message,
+    text: str,
+    delivery_mode: str,
+) -> None:
+    """返信モードに応じて Discord へ送信する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元になったメッセージ。
+    text : str
+        送信する本文。
+    delivery_mode : str
+        `reply` または `thread`。
+
+    Returns
+    -------
+    None
+        指定モードで送信し、失敗時は通常返信へフォールバックする。
+    """
+
+    if delivery_mode != "thread":
+        await send_discord_text(message, text)
+        return
+
+    try:
+        await send_discord_thread(message, text)
+    except (discord.HTTPException, AttributeError):
+        logging.getLogger(__name__).exception(
+            "Failed to send thread response; falling back to reply channel=%s message_id=%s",
+            getattr(message.channel, "id", "unknown"),
+            getattr(message, "id", "unknown"),
+        )
+        await send_discord_text(message, text)
+
+
+async def send_discord_thread(message: discord.Message, text: str) -> None:
+    """スレッドへ応答を送信する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元になったメッセージ。
+    text : str
+        送信する本文。
+
+    Returns
+    -------
+    None
+        既存スレッドまたは新規作成スレッドへ本文を送信する。
+    """
+
+    target_channel = await resolve_discord_thread(message)
+    chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
+    logging.getLogger(__name__).info(
+        "Sending thread response message_id=%s channel=%s thread=%s chunk_count=%s",
+        getattr(message, "id", "unknown"),
+        getattr(message.channel, "id", "unknown"),
+        getattr(target_channel, "id", "unknown"),
+        len(chunks),
+    )
+    for chunk in chunks:
+        await target_channel.send(chunk)
+
+
+async def resolve_discord_thread(message: discord.Message) -> discord.abc.Messageable:
+    """応答先のスレッドを解決する。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元になったメッセージ。
+
+    Returns
+    -------
+    discord.abc.Messageable
+        既存スレッド、または新規作成したスレッド。
+    """
+
+    if isinstance(message.channel, discord.Thread):
+        return message.channel
+    return await message.create_thread(name=build_discord_thread_name(message.content))
+
+
+def build_discord_thread_name(content: str) -> str:
+    """スレッド作成時に使うタイトルを組み立てる。
+
+    Parameters
+    ----------
+    content : str
+        元メッセージ本文。
+
+    Returns
+    -------
+    str
+        Discord スレッド名として使う短い文字列。
+    """
+
+    normalized_content = " ".join(content.strip().split())
+    if not normalized_content:
+        return "agent-port thread"
+    return normalized_content[:80]
 
 
 def split_discord_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:

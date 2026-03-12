@@ -5,7 +5,12 @@ from pathlib import Path
 import pytest
 
 from agent_port import codex_runner
-from agent_port.codex_runner import CodexRunner, build_codex_exec_command, resolve_command_path
+from agent_port.codex_runner import (
+    CodexRunner,
+    build_codex_exec_command,
+    build_codex_prompt,
+    resolve_command_path,
+)
 from agent_port.config import CodexAgentConfig
 
 
@@ -94,3 +99,19 @@ def test_codex_runner_returns_backend_name() -> None:
     )
 
     assert runner.get_backend_name() == "codex"
+
+
+def test_build_codex_prompt_includes_delivery_instruction() -> None:
+    """Codex prompt に配送モード指示を含めることを検証する。
+
+    Returns
+    -------
+    None
+        Agent が reply と thread を選べる指示が先頭へ追加されることを確認する。
+    """
+
+    prompt = build_codex_prompt("実装内容を説明して")
+
+    assert "[delivery:reply]" in prompt
+    assert "[delivery:thread]" in prompt
+    assert prompt.rstrip().endswith("実装内容を説明して")

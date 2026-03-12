@@ -23,6 +23,8 @@ uv run python main.py
 
 `AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot 本体または Bot ロールのメンション付きメッセージに反応します。`all` のときは通常メッセージにも反応します。
 
+Agent の返答は、先頭制御行で `reply` と `thread` を選べます。現在の Codex 実装では、短い単発回答は通常返信、長い説明や継続作業はスレッド返信を選ぶよう指示しています。
+
 ## テスト
 ```powershell
 uv run pytest

@@ -5,7 +5,13 @@ from pathlib import Path
 from agent_port.agent_registry import AgentRegistry
 from agent_port.agent_router import AgentRouter
 from agent_port.config import AppConfig, CodexAgentConfig
-from agent_port.discord_bridge import DiscordAgentBridgeClient, extract_discord_prompt, split_discord_message
+from agent_port.discord_bridge import (
+    DiscordAgentBridgeClient,
+    build_discord_thread_name,
+    extract_discord_delivery,
+    extract_discord_prompt,
+    split_discord_message,
+)
 
 
 def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
@@ -101,6 +107,50 @@ def test_split_discord_message_splits_long_text_into_chunks() -> None:
 
     assert len(chunks) == 3
     assert all(len(chunk) <= 2000 for chunk in chunks)
+
+
+def test_extract_discord_delivery_reads_thread_directive() -> None:
+    """Agent の配送指示から thread モードを抽出できることを検証する。
+
+    Returns
+    -------
+    None
+        制御行を除いた本文と thread モードが得られることを確認する。
+    """
+
+    delivery = extract_discord_delivery("[delivery:thread]\n詳細はスレッドで返します。")
+
+    assert delivery.mode == "thread"
+    assert delivery.message == "詳細はスレッドで返します。"
+
+
+def test_extract_discord_delivery_defaults_to_reply_without_directive() -> None:
+    """制御行がない場合は通常返信へフォールバックすることを検証する。
+
+    Returns
+    -------
+    None
+        mode が `reply` になり、本文がそのまま残ることを確認する。
+    """
+
+    delivery = extract_discord_delivery("通常の返答です。")
+
+    assert delivery.mode == "reply"
+    assert delivery.message == "通常の返答です。"
+
+
+def test_build_discord_thread_name_truncates_long_content() -> None:
+    """長い本文から Discord 用の短いスレッド名を作ることを検証する。
+
+    Returns
+    -------
+    None
+        スレッド名が 80 文字以下に収まることを確認する。
+    """
+
+    thread_name = build_discord_thread_name("a" * 120)
+
+    assert len(thread_name) == 80
 
 
 def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:

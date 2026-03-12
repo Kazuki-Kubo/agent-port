@@ -29,6 +29,8 @@ uv run python main.py
 
 起動後、`mention` モードでは Bot 本体か Bot ロールをメンションしたメッセージだけを処理します。`all` モードでは通常メッセージも処理します。返答は元メッセージへの返信として同じチャンネルに返します。
 
+返答先は Agent が選びます。現在の Codex 実装では、返答の 1 行目に `[delivery:reply]` または `[delivery:thread]` を出す契約にしてあり、Discord 側がそれを解釈して通常返信かスレッド返信を切り替えます。
+
 ## テスト
 ```powershell
 uv run pytest

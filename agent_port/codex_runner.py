@@ -11,6 +11,18 @@ import tempfile
 from agent_port.agents import AgentRequest, AgentRunResult, AgentRunner
 from agent_port.config import CodexAgentConfig
 
+CODEX_DELIVERY_INSTRUCTION = """あなたは Discord 上で動く Agent です。
+
+出力ルール:
+- 1 行目には必ず `[delivery:reply]` または `[delivery:thread]` を書いてください。
+- 2 行目以降に、Discord へそのまま送る日本語の本文だけを書いてください。
+- 制御行を本文に繰り返さないでください。
+- 短い単発回答は `reply` を選んでください。
+- 複数ステップの調査、実装、レビュー、長い説明は `thread` を選んでください。
+
+ユーザー入力:
+"""
+
 
 class CodexExecutionError(RuntimeError):
     """Codex CLI の実行に失敗した場合の例外。"""
@@ -93,7 +105,7 @@ class CodexRunner(AgentRunner):
         command = build_codex_exec_command(
             codex_command=resolve_command_path(self._config.command),
             workspace=self._config.workspace,
-            prompt=normalized_prompt,
+            prompt=build_codex_prompt(normalized_prompt),
             output_path=output_path,
         )
         process: asyncio.subprocess.Process | None = None
@@ -193,6 +205,23 @@ def build_codex_exec_command(
         str(output_path),
         prompt,
     ]
+
+
+def build_codex_prompt(prompt: str) -> str:
+    """Codex に渡す実行 prompt を組み立てる。
+
+    Parameters
+    ----------
+    prompt : str
+        ユーザーから受け取った元の prompt。
+
+    Returns
+    -------
+    str
+        配送モード制御の指示を前置した Codex 用 prompt。
+    """
+
+    return f"{CODEX_DELIVERY_INSTRUCTION}\n{prompt.strip()}"
 
 
 def resolve_command_path(command_name: str) -> str:

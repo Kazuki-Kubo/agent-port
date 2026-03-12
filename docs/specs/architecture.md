@@ -14,6 +14,8 @@ Core では単一 Agent を直呼びしません。`AgentRegistry` に複数 bac
 
 Agent 実装は共通インターフェース `AgentRunner` に従います。入力は `AgentRequest`、出力は `AgentRunResult` で統一します。Chat Adapter は個別 Agent の詳細を知らず、Core 経由で呼び出します。
 
+Discord 返信方法のような Chat Adapter 固有の制御は、Agent の本文先頭に置く制御行で表現します。現在は `[delivery:reply]` と `[delivery:thread]` をサポートし、Discord Adapter が解釈して送信方法を切り替えます。
+
 ## workspace
 workspace は Agent ごとに持ちます。現在は `CodexAgentConfig.workspace` を使い、`AGENT_PORT_CODEX_WORKSPACE` から読み込みます。相対パスと絶対パスの両方を許可し、相対パスは設定基準ディレクトリから解決します。
 
