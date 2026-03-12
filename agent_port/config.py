@@ -25,8 +25,8 @@ class AppConfig:
         Discord Bot へ接続するためのトークン。
     discord_application_id : str | None
         Discord アプリケーションの識別子。
-    discord_command_prefix : str
-        Discord 上で Codex 実行を開始するコマンド接頭辞。
+    discord_trigger_mode : str
+        Discord メッセージへ反応する条件。`mention` または `all`。
     agent_workspace : Path
         Agent を実行する workspace の絶対パス。
     codex_command : str
@@ -41,7 +41,7 @@ class AppConfig:
     agent_backend: str
     discord_bot_token: str | None
     discord_application_id: str | None
-    discord_command_prefix: str
+    discord_trigger_mode: str
     agent_workspace: Path
     codex_command: str
     codex_timeout_seconds: int
@@ -73,10 +73,11 @@ class AppConfig:
         agent_backend = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex")
         discord_bot_token = _read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
         discord_application_id = _read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
-        discord_command_prefix = os.getenv(
-            "AGENT_PORT_DISCORD_COMMAND_PREFIX",
-            "!codex",
-        ).strip()
+        discord_trigger_mode = _read_choice_env(
+            name="AGENT_PORT_DISCORD_TRIGGER_MODE",
+            default="mention",
+            allowed_values={"mention", "all"},
+        )
         workspace_value = os.getenv("AGENT_PORT_AGENT_WORKSPACE", ".")
         codex_command = os.getenv("AGENT_PORT_CODEX_COMMAND", "codex").strip()
         codex_timeout_seconds = _read_positive_int_env(
@@ -95,10 +96,6 @@ class AppConfig:
                 "AGENT_PORT_CHAT_BACKEND=discord の場合は "
                 "AGENT_PORT_DISCORD_BOT_TOKEN が必要です。"
             )
-        if not discord_command_prefix:
-            raise ConfigError(
-                "AGENT_PORT_DISCORD_COMMAND_PREFIX は空文字にできません。"
-            )
         if not codex_command:
             raise ConfigError("AGENT_PORT_CODEX_COMMAND は空文字にできません。")
 
@@ -107,7 +104,7 @@ class AppConfig:
             agent_backend=agent_backend,
             discord_bot_token=discord_bot_token,
             discord_application_id=discord_application_id,
-            discord_command_prefix=discord_command_prefix,
+            discord_trigger_mode=discord_trigger_mode,
             agent_workspace=agent_workspace,
             codex_command=codex_command,
             codex_timeout_seconds=codex_timeout_seconds,
@@ -203,6 +200,39 @@ def _read_positive_int_env(name: str, default: int) -> int:
         raise ConfigError(f"{name} は 1 以上で指定してください。")
 
     return parsed_value
+
+
+def _read_choice_env(name: str, default: str, allowed_values: set[str]) -> str:
+    """候補値のいずれかとして環境変数を読み込む。
+
+    Parameters
+    ----------
+    name : str
+        読み込む環境変数名。
+    default : str
+        値が未指定だった場合の既定値。
+    allowed_values : set[str]
+        許可する値の集合。
+
+    Returns
+    -------
+    str
+        許可された候補値のいずれか。
+
+    Raises
+    ------
+    ConfigError
+        許可されていない値が指定された場合。
+    """
+
+    raw_value = os.getenv(name, default).strip()
+    if raw_value not in allowed_values:
+        allowed_values_text = ", ".join(sorted(allowed_values))
+        raise ConfigError(
+            f"{name} は {allowed_values_text} のいずれかで指定してください。"
+        )
+
+    return raw_value
 
 
 def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:

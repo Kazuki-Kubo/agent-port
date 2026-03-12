@@ -2,7 +2,7 @@
 
 ## 基本フロー
 1. Chat Adapter がチャットメッセージを受信します。
-2. Chat Adapter が受信内容を内部イベントへ変換して Core に渡します。
+2. Chat Adapter が設定済みトリガー条件に一致するメッセージだけを内部イベントへ変換して Core に渡します。
 3. Core が `Conversation` を特定し、対応する `Session` を取得または作成します。
 4. Core が環境変数から読み込んだ設定と入力を Agent Adapter 向けの要求へ変換します。
 5. Agent Adapter が指定された workspace で Agent を実行し、応答をストリームまたは完了イベントとして返します。

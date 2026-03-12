@@ -3,33 +3,60 @@
 from agent_port.discord_bridge import extract_discord_prompt, split_discord_message
 
 
-def test_extract_discord_prompt_returns_prompt_for_prefixed_message() -> None:
-    """接頭辞付きメッセージから実行本文を抽出できることを確認する。
+def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
+    """先頭メンション付きメッセージから本文を抽出できることを確認する。
 
     Returns
     -------
     None
-        接頭辞を除いた本文が取り出されることを検証する。
+        メンションを除いた本文が取り出されることを検証する。
     """
 
-    prompt = extract_discord_prompt(content="!codex hello world", prefix="!codex")
+    prompt = extract_discord_prompt(
+        content="<@123> hello world",
+        trigger_mode="mention",
+        bot_user_id=123,
+    )
 
     assert prompt is not None
     assert prompt.prompt == "hello world"
 
 
-def test_extract_discord_prompt_returns_none_for_non_target_message() -> None:
-    """対象外メッセージは無視されることを確認する。
+def test_extract_discord_prompt_returns_none_when_mention_mode_has_no_mention() -> None:
+    """メンション必須モードでメンションがなければ無視することを確認する。
 
     Returns
     -------
     None
-        接頭辞がない場合に `None` が返ることを検証する。
+        対象外メッセージとして `None` が返ることを検証する。
     """
 
-    prompt = extract_discord_prompt(content="hello world", prefix="!codex")
+    prompt = extract_discord_prompt(
+        content="hello world",
+        trigger_mode="mention",
+        bot_user_id=123,
+    )
 
     assert prompt is None
+
+
+def test_extract_discord_prompt_returns_full_text_in_all_mode() -> None:
+    """全メッセージ反応モードでは本文全体を返すことを確認する。
+
+    Returns
+    -------
+    None
+        先頭加工なしで本文全体が返ることを検証する。
+    """
+
+    prompt = extract_discord_prompt(
+        content="hello world",
+        trigger_mode="all",
+        bot_user_id=None,
+    )
+
+    assert prompt is not None
+    assert prompt.prompt == "hello world"
 
 
 def test_split_discord_message_splits_long_text_into_chunks() -> None:

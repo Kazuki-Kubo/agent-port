@@ -21,14 +21,14 @@ def build_startup_summary(config: AppConfig) -> str:
     Returns
     -------
     str
-        利用中のバックエンドや Discord prefix を含む表示文字列。
+        利用中のバックエンドや Discord トリガー方式を含む表示文字列。
     """
 
     lines = [
         "agent-port is ready.",
         f"chat_backend={config.chat_backend}",
         f"agent_backend={config.agent_backend}",
-        f"discord_command_prefix={config.discord_command_prefix}",
+        f"discord_trigger_mode={config.discord_trigger_mode}",
         f"agent_workspace={config.agent_workspace}",
         f"codex_command={config.codex_command}",
         f"log_level={config.log_level}",

@@ -20,7 +20,7 @@ def test_build_startup_summary_includes_selected_settings() -> None:
         agent_backend="codex",
         discord_bot_token="token",
         discord_application_id="app-id",
-        discord_command_prefix="!codex",
+        discord_trigger_mode="mention",
         agent_workspace=Path("workspace").resolve(),
         codex_command="codex",
         codex_timeout_seconds=300,
@@ -31,5 +31,5 @@ def test_build_startup_summary_includes_selected_settings() -> None:
 
     assert "chat_backend=discord" in summary
     assert "agent_backend=codex" in summary
-    assert "discord_command_prefix=!codex" in summary
+    assert "discord_trigger_mode=mention" in summary
     assert "codex_command=codex" in summary

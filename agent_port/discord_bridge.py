@@ -58,16 +58,16 @@ class DiscordCodexBridgeClient(discord.Client):
         Returns
         -------
         None
-            接続済み Bot 名と設定済み prefix をログ出力する。
+            接続済み Bot 名と設定済みトリガー方式をログ出力する。
         """
 
         if self.user is None:
             return
 
         self._logger.info(
-            "Discord Bot connected as %s with prefix %s",
+            "Discord Bot connected as %s with trigger_mode %s",
             self.user,
-            self._config.discord_command_prefix,
+            self._config.discord_trigger_mode,
         )
 
     async def on_message(self, message: discord.Message) -> None:
@@ -89,7 +89,8 @@ class DiscordCodexBridgeClient(discord.Client):
 
         prompt = extract_discord_prompt(
             content=message.content,
-            prefix=self._config.discord_command_prefix,
+            trigger_mode=self._config.discord_trigger_mode,
+            bot_user_id=self.user.id if self.user is not None else None,
         )
         if prompt is None:
             return
@@ -104,15 +105,21 @@ class DiscordCodexBridgeClient(discord.Client):
         await send_discord_text(message, result.message)
 
 
-def extract_discord_prompt(content: str, prefix: str) -> DiscordPrompt | None:
+def extract_discord_prompt(
+    content: str,
+    trigger_mode: str,
+    bot_user_id: int | None,
+) -> DiscordPrompt | None:
     """Discord メッセージから Codex 実行対象の本文を取り出す。
 
     Parameters
     ----------
     content : str
         Discord 上のメッセージ本文。
-    prefix : str
-        実行トリガーとなる接頭辞。
+    trigger_mode : str
+        反応条件。`mention` または `all`。
+    bot_user_id : int | None
+        メンション判定に使う Bot ユーザー ID。
 
     Returns
     -------
@@ -121,14 +128,48 @@ def extract_discord_prompt(content: str, prefix: str) -> DiscordPrompt | None:
     """
 
     normalized_content = content.strip()
-    if not normalized_content.startswith(prefix):
+    if not normalized_content:
         return None
 
-    prompt = normalized_content[len(prefix) :].strip()
+    if trigger_mode == "all":
+        prompt = normalized_content
+    elif trigger_mode == "mention":
+        if bot_user_id is None:
+            return None
+        prompt = _strip_leading_bot_mention(
+            content=normalized_content,
+            bot_user_id=bot_user_id,
+        )
+    else:
+        return None
+
     if not prompt:
         return None
 
     return DiscordPrompt(prompt=prompt)
+
+
+def _strip_leading_bot_mention(content: str, bot_user_id: int) -> str:
+    """先頭の Bot メンションを取り除いた本文を返す。
+
+    Parameters
+    ----------
+    content : str
+        Discord メッセージ本文。
+    bot_user_id : int
+        取り除き対象の Bot ユーザー ID。
+
+    Returns
+    -------
+    str
+        先頭が Bot メンションなら、それを除いた本文。対象外なら空文字。
+    """
+
+    mention_variants = [f"<@{bot_user_id}>", f"<@!{bot_user_id}>"]
+    for mention in mention_variants:
+        if content.startswith(mention):
+            return content[len(mention) :].strip()
+    return ""
 
 
 async def send_discord_text(

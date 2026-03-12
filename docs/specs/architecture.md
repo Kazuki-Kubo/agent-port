@@ -99,6 +99,7 @@ Core は仲介層であり、Agent の本体機能を実装しません。役割
 - `AGENT_PORT_AGENT_BACKEND`: 利用する Agent 実装の識別子。例: `codex`
 - `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot 接続用トークン
 - `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
+- `AGENT_PORT_DISCORD_TRIGGER_MODE`: Discord の反応条件。`mention` または `all`
 - `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パスまたは設定名
 - `AGENT_PORT_LOG_LEVEL`: ログ出力レベル
 

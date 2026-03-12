@@ -16,7 +16,7 @@ uv sync --dev
 uv run python main.py
 ```
 
-起動後は、Discord 上で `!codex こんにちは` のように送ると、その本文を `codex exec` に渡して返信します。
+起動後は、`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot をメンションした本文に反応し、`all` のときは通常メッセージ本文にも反応します。反応した本文は `codex exec` に渡され、結果が Discord へ返信されます。
 
 ## 設定方針
 将来的な実運用では、チャット実装、Agent 実装、Agent workspace を環境変数で切り替えます。
@@ -25,7 +25,7 @@ uv run python main.py
 - `AGENT_PORT_AGENT_BACKEND`: 例 `codex`
 - `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot トークン
 - `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
-- `AGENT_PORT_DISCORD_COMMAND_PREFIX`: 実行トリガーの接頭辞。既定値は `!codex`
+- `AGENT_PORT_DISCORD_TRIGGER_MODE`: `mention` または `all`
 - `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パス
 - `AGENT_PORT_CODEX_COMMAND`: 実行する Codex CLI コマンド名。既定値は `codex`
 - `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行のタイムアウト秒数
