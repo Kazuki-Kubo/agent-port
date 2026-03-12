@@ -8,6 +8,11 @@ import logging
 import discord
 
 DISCORD_MESSAGE_LIMIT = 2000
+THREAD_TYPES = {
+    discord.ChannelType.public_thread,
+    discord.ChannelType.private_thread,
+    discord.ChannelType.news_thread,
+}
 
 
 @dataclass(frozen=True)
@@ -21,49 +26,6 @@ class DiscordPrompt:
     """
 
     prompt: str
-
-
-@dataclass(frozen=True)
-class DiscordDelivery:
-    """Discord への返信方法を表す。
-
-    Attributes
-    ----------
-    mode : str
-        `reply` または `thread`。
-    message : str
-        返信本文。
-    """
-
-    mode: str
-    message: str
-
-
-def extract_discord_delivery(text: str) -> DiscordDelivery:
-    """返信方法の制御行を解釈する。
-
-    Parameters
-    ----------
-    text : str
-        Agent から返された本文。
-
-    Returns
-    -------
-    DiscordDelivery
-        返信方法と本文。
-    """
-
-    text = text.strip()
-    if not text:
-        return DiscordDelivery(mode="reply", message="")
-
-    lines = text.splitlines()
-    first_line = lines[0].strip().lower()
-    if first_line in {"[delivery:reply]", "[delivery:thread]"}:
-        mode = "thread" if "thread" in first_line else "reply"
-        return DiscordDelivery(mode=mode, message="\n".join(lines[1:]).strip())
-
-    return DiscordDelivery(mode="reply", message=text)
 
 
 def extract_discord_prompt(
@@ -83,6 +45,8 @@ def extract_discord_prompt(
         `mention` または `all`。
     bot_user_id : int | None
         Bot の user ID。
+    bot_role_ids : set[int] | None
+        Bot が持つ role ID 一覧。
     is_bot_mentioned : bool
         メンション判定結果。
 
@@ -119,7 +83,7 @@ def strip_bot_mention(
     bot_user_id: int,
     bot_role_ids: set[int],
 ) -> str:
-    """Bot メンションを本文から除去する。
+    """Bot への mention を本文から除去する。
 
     Parameters
     ----------
@@ -127,11 +91,13 @@ def strip_bot_mention(
         元の本文。
     bot_user_id : int
         Bot の user ID。
+    bot_role_ids : set[int]
+        Bot が持つ role ID 一覧。
 
     Returns
     -------
     str
-        メンション除去後の本文。
+        mention 除去後の本文。
     """
 
     text = content
@@ -143,6 +109,26 @@ def strip_bot_mention(
     for mention in mentions:
         text = text.replace(mention, " ")
     return text.strip()
+
+
+def choose_discord_delivery_mode(message: discord.Message) -> str:
+    """Discord 返信方法を host 側で決める。
+
+    Parameters
+    ----------
+    message : discord.Message
+        元メッセージ。
+
+    Returns
+    -------
+    str
+        通常チャンネルなら `reply`、スレッドなら `thread`。
+    """
+
+    channel_type = getattr(message.channel, "type", None)
+    if isinstance(message.channel, discord.Thread) or channel_type in THREAD_TYPES:
+        return "thread"
+    return "reply"
 
 
 async def send_discord_response(
@@ -167,19 +153,10 @@ async def send_discord_response(
         Discord へ送信する。
     """
 
-    if delivery_mode != "thread":
-        await send_discord_text(message, text)
-        return
-
-    try:
+    if delivery_mode == "thread":
         await send_discord_thread(message, text)
-    except (discord.HTTPException, AttributeError):
-        logging.getLogger(__name__).exception(
-            "Failed to send thread response; falling back to reply channel=%s message_id=%s",
-            getattr(message.channel, "id", "unknown"),
-            getattr(message, "id", "unknown"),
-        )
-        await send_discord_text(message, text)
+        return
+    await send_discord_text(message, text)
 
 
 async def send_discord_text(message: discord.Message, text: str) -> None:
@@ -210,7 +187,7 @@ async def send_discord_text(message: discord.Message, text: str) -> None:
 
 
 async def send_discord_thread(message: discord.Message, text: str) -> None:
-    """スレッドへ送信する。
+    """同じスレッドへ送信する。
 
     Parameters
     ----------
@@ -225,7 +202,7 @@ async def send_discord_thread(message: discord.Message, text: str) -> None:
         必要なら分割してスレッドへ送る。
     """
 
-    target = await resolve_discord_thread(message)
+    target = resolve_discord_thread(message)
     chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
     logging.getLogger(__name__).info(
         "Sending thread response message_id=%s channel=%s thread=%s chunk_count=%s",
@@ -238,7 +215,7 @@ async def send_discord_thread(message: discord.Message, text: str) -> None:
         await target.send(chunk)
 
 
-async def resolve_discord_thread(message: discord.Message) -> discord.abc.Messageable:
+def resolve_discord_thread(message: discord.Message) -> discord.abc.Messageable:
     """返信先スレッドを解決する。
 
     Parameters
@@ -250,15 +227,23 @@ async def resolve_discord_thread(message: discord.Message) -> discord.abc.Messag
     -------
     discord.abc.Messageable
         送信先スレッド。
+
+    Raises
+    ------
+    ValueError
+        スレッド以外で `thread` が要求された場合。
     """
 
     if isinstance(message.channel, discord.Thread):
         return message.channel
-    return await message.create_thread(name=build_discord_thread_name(message.content))
+    channel_type = getattr(message.channel, "type", None)
+    if channel_type in THREAD_TYPES:
+        return message.channel
+    raise ValueError("通常チャンネルでは thread 返信を選べません。")
 
 
 def build_discord_thread_name(content: str) -> str:
-    """スレッド名を作る。
+    """スレッド名の候補を作る。
 
     Parameters
     ----------

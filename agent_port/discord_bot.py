@@ -9,7 +9,7 @@ import discord
 from agent_port.codex import CodexError
 from agent_port.config import AppConfig
 from agent_port.discord_io import (
-    extract_discord_delivery,
+    choose_discord_delivery_mode,
     extract_discord_prompt,
     send_discord_response,
     send_discord_text,
@@ -126,17 +126,17 @@ class DiscordBot(discord.Client):
                 await send_discord_text(message, f"Agent 実行エラー:\n{exc}")
                 return
 
-        delivery = extract_discord_delivery(result.message)
+        delivery_mode = choose_discord_delivery_mode(message)
         self._logger.info(
             "Sending Discord response channel=%s author=%s backend=%s workspace_id=%s response_length=%s delivery_mode=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             result.backend_name,
             result.workspace_id,
-            len(delivery.message),
-            delivery.mode,
+            len(result.message),
+            delivery_mode,
         )
-        await send_discord_response(message, delivery.message, delivery.mode)
+        await send_discord_response(message, result.message, delivery_mode)
 
     def _is_trigger_mentioned(self, message: discord.Message) -> bool:
         """Bot 本体か Bot ロールへのメンションを判定する。

@@ -1,4 +1,4 @@
-"""codex モジュールを確認する。"""
+"""codex モジュールの振る舞いを検証する。"""
 
 from pathlib import Path
 
@@ -15,12 +15,12 @@ from agent_port.config import CodexConfig
 
 
 def test_build_codex_exec_command_has_workspace_and_output() -> None:
-    """実行コマンドに workspace と出力先が含まれることを確認する。
+    """実行コマンドに workspace と出力先が入ることを確認する。
 
     Returns
     -------
     None
-        `codex exec` に必要な引数が揃うことを確認する。
+        `codex exec` に必要な引数が組み立てられる。
     """
 
     workspace = Path("workspace").resolve()
@@ -41,8 +41,10 @@ def test_build_codex_exec_command_has_workspace_and_output() -> None:
     assert command[-1] == "say hello"
 
 
-def test_resolve_command_path_uses_windows_suffix(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`.cmd` などの拡張子付き実行ファイルを解決できることを確認する。
+def test_resolve_command_path_uses_windows_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows の拡張子付きコマンドを見つけられることを確認する。
 
     Parameters
     ----------
@@ -52,7 +54,7 @@ def test_resolve_command_path_uses_windows_suffix(monkeypatch: pytest.MonkeyPatc
     Returns
     -------
     None
-        Windows 形式の実行ファイルも見つけられることを確認する。
+        `codex.cmd` を実行パスとして解決できる。
     """
 
     def fake_which(command_name: str) -> str | None:
@@ -61,12 +63,12 @@ def test_resolve_command_path_uses_windows_suffix(monkeypatch: pytest.MonkeyPatc
         Parameters
         ----------
         command_name : str
-            探索するコマンド名。
+            探索対象のコマンド名。
 
         Returns
         -------
         str | None
-            `codex.cmd` だけ仮のパスを返す。
+            `codex.cmd` だけ見つける。
         """
 
         if command_name == "codex.cmd":
@@ -84,7 +86,7 @@ def test_codex_runner_returns_backend_name() -> None:
     Returns
     -------
     None
-        `codex` が返ることを確認する。
+        backend 名は `codex` になる。
     """
 
     runner = CodexRunner(CodexConfig(name="codex", command="codex", timeout=300))
@@ -92,17 +94,15 @@ def test_codex_runner_returns_backend_name() -> None:
     assert runner.get_backend_name() == "codex"
 
 
-def test_build_codex_prompt_adds_delivery_rules() -> None:
-    """prompt に配送ルールが付くことを確認する。
+def test_build_codex_prompt_trims_text() -> None:
+    """prompt は前後の余分な空白だけを落とすことを確認する。
 
     Returns
     -------
     None
-        `reply` と `thread` の両方の指示が含まれることを確認する。
+        delivery 制御を混ぜずに本文がそのまま使われる。
     """
 
-    prompt = build_codex_prompt("本文を返して")
+    prompt = build_codex_prompt("  本文を返して  ")
 
-    assert "[delivery:reply]" in prompt
-    assert "[delivery:thread]" in prompt
-    assert prompt.rstrip().endswith("本文を返して")
+    assert prompt == "本文を返して"

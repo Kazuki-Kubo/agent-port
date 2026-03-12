@@ -11,13 +11,6 @@ import tempfile
 from agent_port.agents import AgentRequest, AgentRunResult, AgentRunner
 from agent_port.config import CodexConfig
 
-DELIVERY_PROMPT = """Discord へ返す形式を守ってください。
-1. 1 行目には `[delivery:reply]` または `[delivery:thread]` を必ず書いてください。
-2. 2 行目以降に、Discord へ返す日本語の本文だけを書いてください。
-3. 余計な前置きや説明は入れないでください。
-4. 通常は `reply` を選び、長文や継続議論だけ `thread` を選んでください。
-"""
-
 
 class CodexError(RuntimeError):
     """Codex 実行時のエラーを表す。"""
@@ -95,7 +88,7 @@ class CodexRunner(AgentRunner):
             実行結果。
         """
 
-        text = prompt.strip()
+        text = build_codex_prompt(prompt)
         if not text:
             raise CodexError("Codex に渡す prompt は空にできません。")
 
@@ -103,7 +96,7 @@ class CodexRunner(AgentRunner):
         cmd = build_codex_exec_command(
             codex_command=resolve_command_path(self._config.command),
             workspace=workspace_dir,
-            prompt=build_codex_prompt(text),
+            prompt=text,
             output_path=out_file,
         )
         proc: asyncio.subprocess.Process | None = None
@@ -180,6 +173,7 @@ class CodexRunner(AgentRunner):
         return AgentRunResult(
             backend_name=self.get_backend_name(),
             workspace_id=workspace_id,
+            delivery_mode="reply",
             message=message,
             raw_output=raw,
         )
@@ -224,7 +218,7 @@ def build_codex_exec_command(
 
 
 def build_codex_prompt(prompt: str) -> str:
-    """Codex に渡す prompt を組み立てる。
+    """Codex に渡す本文を整形する。
 
     Parameters
     ----------
@@ -234,10 +228,10 @@ def build_codex_prompt(prompt: str) -> str:
     Returns
     -------
     str
-        配送ルールを前置きした prompt。
+        前後空白を除いた本文。
     """
 
-    return f"{DELIVERY_PROMPT}\n{prompt.strip()}"
+    return prompt.strip()
 
 
 def resolve_command_path(command_name: str) -> str:

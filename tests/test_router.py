@@ -46,6 +46,7 @@ class DummyRunner(AgentRunner):
         return AgentRunResult(
             backend_name=self.backend_name,
             workspace_id=request.workspace_id or "unknown",
+            delivery_mode="reply",
             message=f"{self.backend_name}:{request.workspace_id}:{request.prompt}",
             raw_output=str(request.workspace_path),
         )
@@ -79,6 +80,7 @@ def test_router_uses_default_agent_and_workspace() -> None:
 
     assert result.backend_name == "codex"
     assert result.workspace_id == "sample"
+    assert result.delivery_mode == "reply"
     assert result.message == "codex:sample:hello"
 
 
@@ -117,6 +119,7 @@ def test_router_uses_explicit_agent_and_workspace() -> None:
 
     assert result.backend_name == "claude_code"
     assert result.workspace_id == "docs"
+    assert result.delivery_mode == "reply"
     assert result.message == "claude_code:docs:hello"
 
 

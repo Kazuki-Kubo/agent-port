@@ -39,6 +39,8 @@ class AgentRunResult:
         実行した backend 名。
     workspace_id : str
         実行した workspace ID。
+    delivery_mode : str
+        チャットツールへ返す配送方法。
     message : str
         ユーザーへ返す本文。
     raw_output : str
@@ -47,6 +49,7 @@ class AgentRunResult:
 
     backend_name: str
     workspace_id: str
+    delivery_mode: str
     message: str
     raw_output: str
 
