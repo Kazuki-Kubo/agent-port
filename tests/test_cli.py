@@ -7,7 +7,7 @@ import pytest
 from agent_port import cli
 
 
-def test_main_without_arguments_runs_gateway_command(
+def test_main_runs_gateway_without_args(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """引数なし実行が gateway 起動へ委譲されることを検証する。
@@ -28,7 +28,7 @@ def test_main_without_arguments_runs_gateway_command(
     assert cli.main([]) == 7
 
 
-def test_config_validate_returns_zero_for_valid_config(
+def test_config_validate_ok(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -71,7 +71,7 @@ def test_config_validate_returns_zero_for_valid_config(
     assert "valid" in captured.out
 
 
-def test_workspace_list_outputs_registered_workspace(
+def test_workspace_list_shows_workspace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -115,7 +115,7 @@ def test_workspace_list_outputs_registered_workspace(
     assert str(workspace_root.resolve()) in captured.out
 
 
-def test_config_file_outputs_legacy_env_when_using_legacy_workspace(
+def test_config_file_shows_legacy_env(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -150,7 +150,7 @@ def test_config_file_outputs_legacy_env_when_using_legacy_workspace(
     assert "(legacy env)" in captured.out
 
 
-def test_setup_creates_dotenv_and_workspace_registry(
+def test_setup_creates_files(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -227,7 +227,7 @@ def test_setup_force_keeps_existing_dotenv(
     assert (config_dir / "workspaces.json").read_text(encoding="utf-8") == '{"workspaces":[]}'
 
 
-def test_doctor_reports_ok_when_config_and_codex_command_are_available(
+def test_doctor_reports_ok(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

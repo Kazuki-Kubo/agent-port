@@ -11,7 +11,7 @@
 - `uv run pytest`: テストを実行します。
 
 ## Coding Style & Naming Conventions
-Python 3.12 を前提にし、インデントは 4 スペースです。関数・変数は `snake_case`、クラスは `PascalCase`、定数は `UPPER_SNAKE_CASE` を使ってください。全クラス・関数・メソッド・テストには日本語の NumPy 形式 docstring を付けます。責務が増えたら `agent_port/` 配下で小さなモジュールに分割してください。
+Python 3.12 を前提にし、インデントは 4 スペースです。関数・変数は `snake_case`、クラスは `PascalCase`、定数は `UPPER_SNAKE_CASE` を使ってください。名前は意味が分かる範囲で短くし、同じ語の重複や説明過多な識別子は避けます。全クラス・関数・メソッド・テストには日本語の NumPy 形式 docstring を付けます。責務が増えたら `agent_port/` 配下で小さなモジュールに分割してください。
 
 ## Testing Guidelines
 テストは `pytest` を使い、`tests/test_*.py` に追加します。新しいコマンドや分岐を増やしたら、正常系と主要な異常系を最低 1 件ずつ入れてください。CLI 変更時は `uv run pytest` に加えて `uv run agent-port doctor` や `uv run agent-port config validate` の実行結果も確認します。
