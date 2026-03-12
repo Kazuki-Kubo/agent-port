@@ -94,12 +94,12 @@ class DiscordCodexBridgeClient(discord.Client):
 
         is_bot_mentioned = self._is_trigger_mentioned(message)
         self._logger.info(
-            "Received Discord message channel=%s author=%s trigger_mode=%s mentioned=%s content=%r",
+            "Received Discord message channel=%s author=%s trigger_mode=%s mentioned=%s content_length=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             self._config.discord_trigger_mode,
             is_bot_mentioned,
-            message.content,
+            len(message.content),
         )
         prompt = extract_discord_prompt(
             content=message.content,
