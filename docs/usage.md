@@ -7,13 +7,12 @@
 uv sync --dev
 ```
 
+設定値は [`.env.example`](/C:/Users/久保一輝/Desktop/自作エージェント/agent-port/.env.example) をもとに `.env` へ配置できます。`.env` は起動時に自動で読み込みます。
+
 ## 実行
 アプリケーションは次のコマンドで起動します。
 
 ```powershell
-$env:AGENT_PORT_DISCORD_BOT_TOKEN="your-bot-token"
-$env:AGENT_PORT_AGENT_WORKSPACE="workspace/sample"
-$env:AGENT_PORT_DISCORD_COMMAND_PREFIX="!codex"
 uv run python main.py
 ```
 

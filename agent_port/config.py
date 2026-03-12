@@ -68,6 +68,7 @@ class AppConfig:
         """
 
         resolved_base_dir = (base_dir or Path.cwd()).resolve()
+        load_dotenv_file(base_dir=resolved_base_dir)
         chat_backend = os.getenv("AGENT_PORT_CHAT_BACKEND", "discord")
         agent_backend = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex")
         discord_bot_token = _read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
@@ -112,6 +113,39 @@ class AppConfig:
             codex_timeout_seconds=codex_timeout_seconds,
             log_level=log_level,
         )
+
+
+def load_dotenv_file(base_dir: Path) -> None:
+    """基準ディレクトリ直下の `.env` を読み込み、未設定の環境変数へ反映する。
+
+    Parameters
+    ----------
+    base_dir : Path
+        `.env` を探索する基準ディレクトリ。
+
+    Returns
+    -------
+    None
+        `.env` が存在する場合のみ、未設定の環境変数を補完する。
+    """
+
+    dotenv_path = base_dir / ".env"
+    if not dotenv_path.exists():
+        return
+
+    for line in dotenv_path.read_text(encoding="utf-8").splitlines():
+        normalized_line = line.strip()
+        if not normalized_line or normalized_line.startswith("#"):
+            continue
+        if "=" not in normalized_line:
+            continue
+
+        key, value = normalized_line.split("=", 1)
+        env_name = key.strip()
+        if not env_name:
+            continue
+
+        os.environ.setdefault(env_name, value.strip())
 
 
 def _read_optional_env(name: str) -> str | None:
