@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 import os
+from pathlib import Path
 
-from agent_port.workspace_registry import (
-    WorkspaceRegistry,
-    WorkspaceRegistryError,
-    create_legacy_workspace_registry,
-    load_workspace_registry_from_json,
+from agent_port.env_utils import (
+    load_dotenv_file,
+    read_choice_env,
+    read_optional_env,
+    read_positive_int_env,
 )
+from agent_port.workspace_config import (
+    load_workspace_registry_from_sources,
+    resolve_default_workspace_id,
+)
+from agent_port.workspace_registry import WorkspaceRegistry, WorkspaceRegistryError
 
 
 class ConfigError(ValueError):
@@ -115,28 +120,30 @@ class AppConfig:
         load_dotenv_file(base_dir=resolved_base_dir)
 
         chat_backend = os.getenv("AGENT_PORT_CHAT_BACKEND", "discord").strip()
-        default_agent_backend = _read_optional_env("AGENT_PORT_DEFAULT_AGENT")
+        default_agent_backend = read_optional_env("AGENT_PORT_DEFAULT_AGENT")
         if default_agent_backend is None:
             default_agent_backend = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex").strip()
 
-        default_workspace_id = _read_optional_env("AGENT_PORT_DEFAULT_WORKSPACE")
-        workspace_registry_path = _read_optional_env("AGENT_PORT_WORKSPACE_REGISTRY")
-        discord_bot_token = _read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
-        discord_application_id = _read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
-        discord_trigger_mode = _read_choice_env(
+        default_workspace_id = read_optional_env("AGENT_PORT_DEFAULT_WORKSPACE")
+        workspace_registry_path = read_optional_env("AGENT_PORT_WORKSPACE_REGISTRY")
+        discord_bot_token = read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
+        discord_application_id = read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
+        discord_trigger_mode = read_choice_env(
             name="AGENT_PORT_DISCORD_TRIGGER_MODE",
             default="mention",
             allowed_values={"mention", "all"},
+            error_factory=ConfigError,
         )
 
-        legacy_workspace_value = _read_optional_env("AGENT_PORT_CODEX_WORKSPACE")
+        legacy_workspace_value = read_optional_env("AGENT_PORT_CODEX_WORKSPACE")
         if legacy_workspace_value is None:
-            legacy_workspace_value = _read_optional_env("AGENT_PORT_AGENT_WORKSPACE")
+            legacy_workspace_value = read_optional_env("AGENT_PORT_AGENT_WORKSPACE")
 
         codex_command = os.getenv("AGENT_PORT_CODEX_COMMAND", "codex").strip()
-        codex_timeout_seconds = _read_positive_int_env(
+        codex_timeout_seconds = read_positive_int_env(
             name="AGENT_PORT_CODEX_TIMEOUT_SECONDS",
             default=300,
+            error_factory=ConfigError,
         )
         log_level = os.getenv("AGENT_PORT_LOG_LEVEL", "INFO").strip()
 
@@ -149,16 +156,18 @@ class AppConfig:
             timeout_seconds=codex_timeout_seconds,
         )
 
-        workspace_registry, resolved_registry_path = _load_workspace_registry(
+        workspace_registry, resolved_registry_path = load_workspace_registry_from_sources(
             base_dir=resolved_base_dir,
             workspace_registry_path=workspace_registry_path,
             default_workspace_id=default_workspace_id,
             legacy_workspace_value=legacy_workspace_value,
+            error_factory=ConfigError,
         )
-        resolved_default_workspace_id = _resolve_default_workspace_id(
+        resolved_default_workspace_id = resolve_default_workspace_id(
             workspace_registry=workspace_registry,
             requested_workspace_id=default_workspace_id,
             legacy_workspace_value=legacy_workspace_value,
+            error_factory=ConfigError,
         )
 
         if chat_backend == "discord" and not discord_bot_token:
@@ -305,229 +314,3 @@ class AppConfig:
         """後方互換用に Codex timeout を返す。"""
 
         return self.codex_config.timeout_seconds
-
-
-def load_dotenv_file(base_dir: Path) -> None:
-    """`.env` を読み込む。
-
-    Parameters
-    ----------
-    base_dir : Path
-        `.env` を探す基準ディレクトリ。
-
-    Returns
-    -------
-    None
-        未設定の環境変数だけを `.env` から補う。
-    """
-
-    dotenv_path = base_dir / ".env"
-    if not dotenv_path.exists():
-        return
-
-    for line in dotenv_path.read_text(encoding="utf-8").splitlines():
-        normalized_line = line.strip()
-        if not normalized_line or normalized_line.startswith("#"):
-            continue
-        if "=" not in normalized_line:
-            continue
-
-        key, value = normalized_line.split("=", 1)
-        env_name = key.strip()
-        if not env_name:
-            continue
-
-        os.environ.setdefault(env_name, value.strip())
-
-
-def _load_workspace_registry(
-    base_dir: Path,
-    workspace_registry_path: str | None,
-    default_workspace_id: str | None,
-    legacy_workspace_value: str | None,
-) -> tuple[WorkspaceRegistry, Path | None]:
-    """workspace registry を読み込む。
-
-    Parameters
-    ----------
-    base_dir : Path
-        `agent-port` 本体ディレクトリ。
-    workspace_registry_path : str | None
-        registry JSON のパス文字列。
-    default_workspace_id : str | None
-        既定 workspace ID。
-    legacy_workspace_value : str | None
-        旧環境変数による直接 workspace path。
-
-    Returns
-    -------
-    tuple[WorkspaceRegistry, Path | None]
-        読み込んだ registry と、使った registry ファイルパス。
-    """
-
-    resolved_registry_path: Path | None = None
-    registry = WorkspaceRegistry([])
-
-    if workspace_registry_path is not None:
-        raw_registry_path = Path(workspace_registry_path)
-        resolved_registry_path = (
-            raw_registry_path.resolve()
-            if raw_registry_path.is_absolute()
-            else (base_dir / raw_registry_path).resolve()
-        )
-        try:
-            registry = load_workspace_registry_from_json(
-                registry_path=resolved_registry_path,
-                control_root=base_dir,
-            )
-        except WorkspaceRegistryError as exc:
-            raise ConfigError(str(exc)) from exc
-    else:
-        default_registry_path = (base_dir / "config/workspaces.json").resolve()
-        if default_registry_path.exists():
-            resolved_registry_path = default_registry_path
-            try:
-                registry = load_workspace_registry_from_json(
-                    registry_path=default_registry_path,
-                    control_root=base_dir,
-                )
-            except WorkspaceRegistryError as exc:
-                raise ConfigError(str(exc)) from exc
-
-    if registry.is_empty() and legacy_workspace_value is not None:
-        legacy_workspace_id = default_workspace_id or "legacy"
-        try:
-            registry = create_legacy_workspace_registry(
-                workspace_id=legacy_workspace_id,
-                workspace_value=legacy_workspace_value,
-                base_dir=base_dir,
-                control_root=base_dir,
-            )
-        except WorkspaceRegistryError as exc:
-            raise ConfigError(str(exc)) from exc
-        return registry, None
-
-    if registry.is_empty():
-        raise ConfigError(
-            "workspace registry が空です。config/workspaces.json を作成するか、"
-            "後方互換の AGENT_PORT_CODEX_WORKSPACE を設定してください。"
-        )
-
-    return registry, resolved_registry_path
-
-
-def _resolve_default_workspace_id(
-    workspace_registry: WorkspaceRegistry,
-    requested_workspace_id: str | None,
-    legacy_workspace_value: str | None,
-) -> str:
-    """既定 workspace ID を確定する。
-
-    Parameters
-    ----------
-    workspace_registry : WorkspaceRegistry
-        読み込み済み registry。
-    requested_workspace_id : str | None
-        明示指定された既定 workspace ID。
-    legacy_workspace_value : str | None
-        旧環境変数による直接 path 指定。
-
-    Returns
-    -------
-    str
-        実際に採用する既定 workspace ID。
-    """
-
-    if requested_workspace_id is not None:
-        return requested_workspace_id
-
-    workspace_ids = workspace_registry.list_workspace_ids()
-    if len(workspace_ids) == 1:
-        return workspace_ids[0]
-
-    if legacy_workspace_value is not None and "legacy" in workspace_ids:
-        return "legacy"
-
-    raise ConfigError(
-        "workspace が複数あるため AGENT_PORT_DEFAULT_WORKSPACE を指定してください。"
-    )
-
-
-def _read_optional_env(name: str) -> str | None:
-    """環境変数を空白除去して読み込む。
-
-    Parameters
-    ----------
-    name : str
-        読み込む環境変数名。
-
-    Returns
-    -------
-    str | None
-        値があれば空白除去後の文字列、空なら `None`。
-    """
-
-    value = os.getenv(name)
-    if value is None:
-        return None
-    stripped_value = value.strip()
-    return stripped_value or None
-
-
-def _read_positive_int_env(name: str, default: int) -> int:
-    """正の整数環境変数を読み込む。
-
-    Parameters
-    ----------
-    name : str
-        読み込む環境変数名。
-    default : int
-        未設定時の既定値。
-
-    Returns
-    -------
-    int
-        読み込んだ整数値。
-    """
-
-    raw_value = os.getenv(name)
-    if raw_value is None:
-        return default
-
-    try:
-        parsed_value = int(raw_value)
-    except ValueError as exc:
-        raise ConfigError(f"{name} は整数で指定してください。") from exc
-
-    if parsed_value < 1:
-        raise ConfigError(f"{name} は 1 以上で指定してください。")
-
-    return parsed_value
-
-
-def _read_choice_env(name: str, default: str, allowed_values: set[str]) -> str:
-    """候補内の値だけ許可する環境変数を読み込む。
-
-    Parameters
-    ----------
-    name : str
-        読み込む環境変数名。
-    default : str
-        未設定時の既定値。
-    allowed_values : set[str]
-        許可する値一覧。
-
-    Returns
-    -------
-    str
-        許可された値。
-    """
-
-    raw_value = os.getenv(name, default).strip()
-    if raw_value not in allowed_values:
-        allowed_values_text = ", ".join(sorted(allowed_values))
-        raise ConfigError(
-            f"{name} は {allowed_values_text} のいずれかで指定してください。"
-        )
-
-    return raw_value
