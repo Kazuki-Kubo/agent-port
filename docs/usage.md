@@ -13,10 +13,11 @@ uv sync --dev
 ```powershell
 $env:AGENT_PORT_DISCORD_BOT_TOKEN="your-bot-token"
 $env:AGENT_PORT_AGENT_WORKSPACE="workspace/sample"
+$env:AGENT_PORT_DISCORD_COMMAND_PREFIX="!codex"
 uv run python main.py
 ```
 
-現時点では、読み込んだ設定サマリーを標準出力に表示します。
+起動後は、Discord 上で `!codex こんにちは` のように送ると、その本文を `codex exec` に渡して返信します。
 
 ## 設定方針
 将来的な実運用では、チャット実装、Agent 実装、Agent workspace を環境変数で切り替えます。
@@ -25,10 +26,18 @@ uv run python main.py
 - `AGENT_PORT_AGENT_BACKEND`: 例 `codex`
 - `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot トークン
 - `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
+- `AGENT_PORT_DISCORD_COMMAND_PREFIX`: 実行トリガーの接頭辞。既定値は `!codex`
 - `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パス
+- `AGENT_PORT_CODEX_COMMAND`: 実行する Codex CLI コマンド名。既定値は `codex`
+- `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行のタイムアウト秒数
 - `AGENT_PORT_LOG_LEVEL`: 例 `INFO`
 
 workspace のパスは、環境移動しやすいように相対パスで管理します。
+
+## Discord 側の前提
+- Bot トークンを発行済みであること
+- Bot を対象サーバーへ招待済みであること
+- Message Content Intent を有効化していること
 
 ## テスト
 自動テストは `pytest` で実行します。

@@ -25,8 +25,14 @@ class AppConfig:
         Discord Bot へ接続するためのトークン。
     discord_application_id : str | None
         Discord アプリケーションの識別子。
+    discord_command_prefix : str
+        Discord 上で Codex 実行を開始するコマンド接頭辞。
     agent_workspace : Path
         Agent を実行する workspace の絶対パス。
+    codex_command : str
+        実行する Codex CLI コマンド名。
+    codex_timeout_seconds : int
+        Codex 実行のタイムアウト秒数。
     log_level : str
         ログ出力レベル。
     """
@@ -35,7 +41,10 @@ class AppConfig:
     agent_backend: str
     discord_bot_token: str | None
     discord_application_id: str | None
+    discord_command_prefix: str
     agent_workspace: Path
+    codex_command: str
+    codex_timeout_seconds: int
     log_level: str
 
     @classmethod
@@ -55,7 +64,7 @@ class AppConfig:
         Raises
         ------
         ConfigError
-            必須設定が不足している場合や、workspace の形式が不正な場合。
+            必須設定が不足している場合や、設定形式が不正な場合。
         """
 
         resolved_base_dir = (base_dir or Path.cwd()).resolve()
@@ -63,7 +72,16 @@ class AppConfig:
         agent_backend = os.getenv("AGENT_PORT_AGENT_BACKEND", "codex")
         discord_bot_token = _read_optional_env("AGENT_PORT_DISCORD_BOT_TOKEN")
         discord_application_id = _read_optional_env("AGENT_PORT_DISCORD_APPLICATION_ID")
+        discord_command_prefix = os.getenv(
+            "AGENT_PORT_DISCORD_COMMAND_PREFIX",
+            "!codex",
+        ).strip()
         workspace_value = os.getenv("AGENT_PORT_AGENT_WORKSPACE", ".")
+        codex_command = os.getenv("AGENT_PORT_CODEX_COMMAND", "codex").strip()
+        codex_timeout_seconds = _read_positive_int_env(
+            name="AGENT_PORT_CODEX_TIMEOUT_SECONDS",
+            default=300,
+        )
         log_level = os.getenv("AGENT_PORT_LOG_LEVEL", "INFO")
 
         agent_workspace = _resolve_relative_workspace(
@@ -76,13 +94,22 @@ class AppConfig:
                 "AGENT_PORT_CHAT_BACKEND=discord の場合は "
                 "AGENT_PORT_DISCORD_BOT_TOKEN が必要です。"
             )
+        if not discord_command_prefix:
+            raise ConfigError(
+                "AGENT_PORT_DISCORD_COMMAND_PREFIX は空文字にできません。"
+            )
+        if not codex_command:
+            raise ConfigError("AGENT_PORT_CODEX_COMMAND は空文字にできません。")
 
         return cls(
             chat_backend=chat_backend,
             agent_backend=agent_backend,
             discord_bot_token=discord_bot_token,
             discord_application_id=discord_application_id,
+            discord_command_prefix=discord_command_prefix,
             agent_workspace=agent_workspace,
+            codex_command=codex_command,
+            codex_timeout_seconds=codex_timeout_seconds,
             log_level=log_level,
         )
 
@@ -106,6 +133,42 @@ def _read_optional_env(name: str) -> str | None:
         return None
     stripped_value = value.strip()
     return stripped_value or None
+
+
+def _read_positive_int_env(name: str, default: int) -> int:
+    """正の整数として環境変数を読み込む。
+
+    Parameters
+    ----------
+    name : str
+        読み込む環境変数名。
+    default : int
+        値が未指定だった場合の既定値。
+
+    Returns
+    -------
+    int
+        読み込んだ正の整数値。
+
+    Raises
+    ------
+    ConfigError
+        整数へ変換できない場合や、1 未満だった場合。
+    """
+
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+
+    try:
+        parsed_value = int(raw_value)
+    except ValueError as exc:
+        raise ConfigError(f"{name} は整数で指定してください。") from exc
+
+    if parsed_value < 1:
+        raise ConfigError(f"{name} は 1 以上で指定してください。")
+
+    return parsed_value
 
 
 def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:

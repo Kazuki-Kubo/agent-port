@@ -23,7 +23,7 @@ $env:AGENT_PORT_AGENT_WORKSPACE="workspace/sample"
 uv run python main.py
 ```
 
-設定は環境変数で与えます。workspace は相対パスで指定します。
+設定は環境変数で与えます。workspace は相対パスで指定します。起動後は Discord で `!codex 調べたい内容` の形式で送信すると、指定 workspace で `codex exec` を実行して返信します。
 
 ## テスト
 ```powershell

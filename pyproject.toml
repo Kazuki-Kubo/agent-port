@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "uv を使う最小構成の Python CLI サンプル"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "discord-py>=2.4,<3",
+]
 
 [dependency-groups]
 dev = [

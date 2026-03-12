@@ -30,7 +30,10 @@ def test_from_env_reads_discord_and_workspace_settings(
     monkeypatch.setenv("AGENT_PORT_AGENT_BACKEND", "codex")
     monkeypatch.setenv("AGENT_PORT_DISCORD_BOT_TOKEN", "discord-token")
     monkeypatch.setenv("AGENT_PORT_DISCORD_APPLICATION_ID", "123456")
+    monkeypatch.setenv("AGENT_PORT_DISCORD_COMMAND_PREFIX", "!ask")
     monkeypatch.setenv("AGENT_PORT_AGENT_WORKSPACE", "workspace/project")
+    monkeypatch.setenv("AGENT_PORT_CODEX_COMMAND", "codex")
+    monkeypatch.setenv("AGENT_PORT_CODEX_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("AGENT_PORT_LOG_LEVEL", "DEBUG")
 
     config = AppConfig.from_env(base_dir=tmp_path)
@@ -39,7 +42,10 @@ def test_from_env_reads_discord_and_workspace_settings(
     assert config.agent_backend == "codex"
     assert config.discord_bot_token == "discord-token"
     assert config.discord_application_id == "123456"
+    assert config.discord_command_prefix == "!ask"
     assert config.agent_workspace == (tmp_path / "workspace/project").resolve()
+    assert config.codex_command == "codex"
+    assert config.codex_timeout_seconds == 45
     assert config.log_level == "DEBUG"
 
 
@@ -70,7 +76,10 @@ def test_from_env_uses_defaults_when_optional_values_are_missing(
     assert config.agent_backend == "codex"
     assert config.discord_bot_token is None
     assert config.discord_application_id is None
+    assert config.discord_command_prefix == "!codex"
     assert config.agent_workspace == tmp_path.resolve()
+    assert config.codex_command == "codex"
+    assert config.codex_timeout_seconds == 300
     assert config.log_level == "INFO"
 
 
@@ -121,6 +130,32 @@ def test_from_env_rejects_absolute_workspace_path(
 
     monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
     monkeypatch.setenv("AGENT_PORT_AGENT_WORKSPACE", str(tmp_path.resolve()))
+
+    with pytest.raises(ConfigError):
+        AppConfig.from_env(base_dir=tmp_path)
+
+
+def test_from_env_rejects_non_positive_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Codex タイムアウトが 1 未満なら拒否することを確認する。
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        テスト用の環境変数を操作するためのフィクスチャ。
+    tmp_path : Path
+        一時ディレクトリを提供するフィクスチャ。
+
+    Returns
+    -------
+    None
+        不正なタイムアウト値で例外が送出されることを検証する。
+    """
+
+    monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
+    monkeypatch.setenv("AGENT_PORT_CODEX_TIMEOUT_SECONDS", "0")
 
     with pytest.raises(ConfigError):
         AppConfig.from_env(base_dir=tmp_path)
