@@ -36,6 +36,7 @@ def test_from_env_reads_values_from_dotenv_file(
         ),
         encoding="utf-8",
     )
+    (tmp_path / "workspace/from-dotenv").mkdir(parents=True)
     monkeypatch.delenv("AGENT_PORT_CHAT_BACKEND", raising=False)
     monkeypatch.delenv("AGENT_PORT_AGENT_BACKEND", raising=False)
     monkeypatch.delenv("AGENT_PORT_DISCORD_BOT_TOKEN", raising=False)

@@ -262,6 +262,19 @@ def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:
 
     workspace_path = Path(normalized_value)
     if workspace_path.is_absolute():
-        return workspace_path.resolve()
+        resolved_workspace = workspace_path.resolve()
+    else:
+        resolved_workspace = (base_dir / workspace_path).resolve()
 
-    return (base_dir / workspace_path).resolve()
+    if not resolved_workspace.exists():
+        raise ConfigError(
+            "AGENT_PORT_AGENT_WORKSPACE が存在しません: "
+            f"{resolved_workspace}"
+        )
+    if not resolved_workspace.is_dir():
+        raise ConfigError(
+            "AGENT_PORT_AGENT_WORKSPACE はディレクトリを指定してください: "
+            f"{resolved_workspace}"
+        )
+
+    return resolved_workspace

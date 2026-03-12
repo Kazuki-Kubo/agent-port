@@ -35,6 +35,7 @@ def test_from_env_reads_discord_and_workspace_settings(
     monkeypatch.setenv("AGENT_PORT_CODEX_COMMAND", "codex")
     monkeypatch.setenv("AGENT_PORT_CODEX_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("AGENT_PORT_LOG_LEVEL", "DEBUG")
+    (tmp_path / "workspace/project").mkdir(parents=True)
 
     config = AppConfig.from_env(base_dir=tmp_path)
 
@@ -134,6 +135,32 @@ def test_from_env_accepts_absolute_workspace_path(
     config = AppConfig.from_env(base_dir=tmp_path)
 
     assert config.agent_workspace == tmp_path.resolve()
+
+
+def test_from_env_rejects_missing_workspace_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """workspace が存在しない場合は設定エラーになることを確認する。
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        テスト用の環境変数を操作するためのフィクスチャ。
+    tmp_path : Path
+        一時ディレクトリを提供するフィクスチャ。
+
+    Returns
+    -------
+    None
+        存在しないディレクトリ指定で例外が送出されることを検証する。
+    """
+
+    monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
+    monkeypatch.setenv("AGENT_PORT_AGENT_WORKSPACE", "missing-workspace")
+
+    with pytest.raises(ConfigError):
+        AppConfig.from_env(base_dir=tmp_path)
 
 
 def test_from_env_rejects_non_positive_timeout(
