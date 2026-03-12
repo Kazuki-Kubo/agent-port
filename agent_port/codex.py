@@ -143,6 +143,13 @@ class CodexRunner(AgentRunner):
         if proc is None:
             raise CodexError("Codex CLI プロセスを起動できませんでした。")
         if proc.returncode != 0:
+            if raw.strip():
+                self._log.error(
+                    "Codex raw output workspace_id=%s returncode=%s\n%s",
+                    workspace_id,
+                    proc.returncode,
+                    raw.strip(),
+                )
             raise CodexError(
                 "Codex CLI の実行に失敗しました。\n"
                 f"returncode={proc.returncode}\n"
@@ -153,6 +160,17 @@ class CodexRunner(AgentRunner):
         if not message:
             raise CodexError("Codex CLI から応答を取得できませんでした。")
 
+        if raw.strip():
+            self._log.debug(
+                "Codex raw output workspace_id=%s\n%s",
+                workspace_id,
+                raw.strip(),
+            )
+        self._log.info(
+            "Codex final message workspace_id=%s\n%s",
+            workspace_id,
+            message,
+        )
         self._log.info(
             "Codex command completed workspace_id=%s returncode=%s response_length=%s",
             workspace_id,
