@@ -7,7 +7,8 @@
 - `pyproject.toml`: プロジェクト設定、依存関係、テスト設定
 - `README.md`: 利用方法と開発手順
 - `docs/usage.md`: 使い方のドキュメント
-- `docs/specs.md`: 仕様のドキュメント
+- `docs/specs.md`: 仕様の入口
+- `docs/specs/`: 詳細仕様
 - `tests/`: 自動テスト
 
 ロジックが増えた場合は `agent_port/` のようなパッケージへ分離し、`main.py` は起動処理だけに保ってください。
