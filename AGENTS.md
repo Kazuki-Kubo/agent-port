@@ -1,49 +1,23 @@
 # Repository Guidelines
 
-## プロジェクト構成
-このリポジトリは Python 3.12 と `uv` を前提にした小規模な CLI プロジェクトです。
+## Project Structure & Module Organization
+実装本体は `agent_port/` に置きます。`main.py` は薄い起動口だけにし、機能は `agent_port/` 配下へ寄せます。テストは `tests/`、使い方は `docs/usage.md`、仕様は `docs/specs.md` と `docs/specs/` にまとめます。ドキュメント名は簡潔で分かりやすくし、内容が大きくなったら `docs/usage/` や `docs/specs/` のように分割します。
 
-- `main.py`: アプリケーションのエントリーポイント
-- `pyproject.toml`: プロジェクト設定、依存関係、テスト設定
-- `README.md`: 利用方法と開発手順
-- `docs/usage.md`: 使い方のドキュメント
-- `docs/specs.md`: 仕様の入口
-- `docs/specs/`: 詳細仕様
-- `tests/`: 自動テスト
-
-ロジックが増えた場合は `agent_port/` のようなパッケージへ分離し、`main.py` は起動処理だけに保ってください。
-
-## ドキュメント方針
-ドキュメントは `docs/` 配下で管理し、「使い方」と「仕様」を分けて保存します。
-
-- 使い方: セットアップ、実行方法、開発フロー、操作例
-- 仕様: 入出力、責務、制約、将来の互換性に関わる決定
-
-ファイル名は簡潔で分かりやすいものを使ってください。パスは常にリポジトリ基準の相対パスで記載してください。README は入口として短く保ち、詳細は `docs/usage.md` と `docs/specs.md` に記載してください。使い方や仕様が大きくなった場合は、それぞれフォルダに分けて管理してください。
-
-## 開発コマンド
-- `uv sync --dev`: 開発依存を含めて環境を同期します。
-- `uv run python main.py`: ローカルでアプリを実行します。
+## Build, Test, and Development Commands
+- `uv sync --dev`: 開発依存を含めて同期します。
+- `uv run python main.py`: Bot を起動します。
 - `uv run pytest`: テストを実行します。
-- `uv run python -m py_compile main.py tests/test_main.py`: 構文を簡易確認します。
 
-新しいコマンドを追加した場合は、README とこのファイルの両方を更新してください。
+設定は `.env` から読みます。.env の共有は禁止し、例は `.env.example` にだけ置きます。
 
-## コーディング規約
-インデントは 4 スペースを使用し、命名は Python の標準慣習に従います。
+## Coding Style & Naming Conventions
+Python 3.12 を前提にします。インデントは 4 スペース、関数と変数は `snake_case`、クラスは `PascalCase`、定数は `UPPER_SNAKE_CASE` を使います。全てのクラス・関数・メソッド・テストには、日本語の NumPy 形式 docstring を付けてください。
 
-- 関数・変数: `snake_case`
-- クラス: `PascalCase`
-- 定数: `UPPER_SNAKE_CASE`
+## Testing Guidelines
+テストは `pytest` を使い、`tests/test_*.py` に追加します。機能追加時は正常系と主な異常系を最低 1 件ずつ入れてください。外部サービス依存はモック化し、ローカルで `uv run pytest` が通る状態を維持します。
 
-全てのクラス、関数、メソッド、テストには日本語の NumPy 形式 docstring を付けてください。型ヒントを基本とし、処理が明白でない箇所にだけ短いコメントを入れます。
+## Commit & Pull Request Guidelines
+コミットメッセージは `feat: ...`、`fix: ...`、`docs: ...` のような Conventional Commits 形式を使います。区切りのよい単位で `git commit` し、共有が必要な変更は `git push` します。PR には目的、主要変更、テスト結果、必要なら設定変更やスクリーンショットを含めてください。
 
-## テスト方針
-テストは `pytest` を利用し、`tests/test_*.py` の形式で追加します。正常系を最低 1 件、分岐や入力条件が増えたら異常系も追加してください。
-
-変更前後で `uv run pytest` が通ることを確認してからコミットします。
-
-## コミットとプルリクエスト
-履歴はまだ薄いため、コミットメッセージは Conventional Commits 互換の短い形式を推奨します。例: `feat: 挨拶生成関数を追加`、`docs: README を日本語化`。
-
-変更は区切りのよい単位で `git commit` し、共有が必要な内容は `git push` してください。プルリクエストには目的、変更内容、確認手順を必ず記載してください。CLI の挙動を変えた場合は、実行コマンドと期待結果も添えてください。
+## Documentation & Path Rules
+ドキュメントには使い方と仕様を保存します。パスはフォルダ移動に耐えられるよう、常にリポジトリ基準の相対パスで記述してください。新しい設定項目や制約を追加したら、コード変更と同じタイミングで `docs/usage.md` と `docs/specs/` を更新します。

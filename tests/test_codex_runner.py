@@ -1,20 +1,21 @@
-"""codex_runner モジュールの振る舞いを検証するテスト。"""
+"""codex_runner モジュールの動作を検証するテスト。"""
 
 from pathlib import Path
 
 import pytest
 
 from agent_port import codex_runner
-from agent_port.codex_runner import build_codex_exec_command, resolve_command_path
+from agent_port.codex_runner import CodexRunner, build_codex_exec_command, resolve_command_path
+from agent_port.config import CodexAgentConfig
 
 
 def test_build_codex_exec_command_includes_workspace_and_output() -> None:
-    """Codex 実行コマンドに必要な引数が含まれることを確認する。
+    """Codex 実行コマンドに必要な引数が含まれることを検証する。
 
     Returns
     -------
     None
-        workspace、出力ファイル、プロンプトが順序どおり含まれることを検証する。
+        workspace、出力ファイル、prompt が正しく組み立てられることを確認する。
     """
 
     workspace = Path("workspace").resolve()
@@ -38,31 +39,31 @@ def test_build_codex_exec_command_includes_workspace_and_output() -> None:
 def test_resolve_command_path_uses_windows_fallback_extension(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """コマンド名のみ指定された場合でも `.cmd` 形式へ解決できることを確認する。
+    """`which` が空でも `.cmd` 拡張子で解決できることを検証する。
 
     Parameters
     ----------
     monkeypatch : pytest.MonkeyPatch
-        `shutil.which` の戻り値を差し替えるためのフィクスチャ。
+        `shutil.which` を差し替えるための fixture。
 
     Returns
     -------
     None
-        `.cmd` へのフォールバックが機能することを検証する。
+        Windows 向けフォールバックが機能することを確認する。
     """
 
     def fake_which(command_name: str) -> str | None:
-        """指定されたコマンド名に応じて疑似的な探索結果を返す。
+        """テスト用の疑似 which 実装を返す。
 
         Parameters
         ----------
         command_name : str
-            探索対象のコマンド名。
+            解決対象のコマンド名。
 
         Returns
         -------
         str | None
-            `.cmd` だけ存在する状況を模した探索結果。
+            `codex.cmd` にだけパスを返し、それ以外は `None` を返す。
         """
 
         if command_name == "codex.cmd":
@@ -72,3 +73,24 @@ def test_resolve_command_path_uses_windows_fallback_extension(
     monkeypatch.setattr(codex_runner.shutil, "which", fake_which)
 
     assert resolve_command_path("codex") == "C:/tools/codex.cmd"
+
+
+def test_codex_runner_returns_backend_name() -> None:
+    """CodexRunner が自身の backend 名を返すことを検証する。
+
+    Returns
+    -------
+    None
+        registry 登録用の backend 名が `codex` であることを確認する。
+    """
+
+    runner = CodexRunner(
+        CodexAgentConfig(
+            backend_name="codex",
+            workspace=Path(".").resolve(),
+            command="codex",
+            timeout_seconds=300,
+        )
+    )
+
+    assert runner.get_backend_name() == "codex"

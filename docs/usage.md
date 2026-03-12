@@ -1,49 +1,35 @@
 # 使い方
 
 ## セットアップ
-開発環境は `uv` で作成します。
+依存関係は `uv` で入れます。
 
 ```powershell
 uv sync --dev
 ```
 
-設定値は [`.env.example`](/C:/Users/久保一輝/Desktop/自作エージェント/agent-port/.env.example) をもとに `.env` へ配置できます。`.env` は起動時に自動で読み込みます。
+次に `.env.example` をコピーして `.env` を作成します。`.env` は共有せず、秘密値を含まない例だけを `.env.example` に残します。
 
-## 実行
-アプリケーションは次のコマンドで起動します。
+## 主な環境変数
+- `AGENT_PORT_CHAT_BACKEND`: 現在は `discord` を使用
+- `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot トークン
+- `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
+- `AGENT_PORT_DISCORD_TRIGGER_MODE`: `mention` または `all`
+- `AGENT_PORT_DEFAULT_AGENT`: 既定の Agent。現時点では `codex`
+- `AGENT_PORT_CODEX_WORKSPACE`: Codex を実行する workspace。相対パスまたは絶対パス
+- `AGENT_PORT_CODEX_COMMAND`: Codex CLI コマンド。通常は `codex`
+- `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行タイムアウト秒数
+- `AGENT_PORT_LOG_LEVEL`: 例 `INFO`
 
+`AGENT_PORT_AGENT_BACKEND` と `AGENT_PORT_AGENT_WORKSPACE` も読めますが、これは旧設定との互換用です。新しい設定では `AGENT_PORT_DEFAULT_AGENT` と `AGENT_PORT_CODEX_WORKSPACE` を使います。
+
+## 起動
 ```powershell
 uv run python main.py
 ```
 
-起動後は、`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot をメンションした本文に反応し、`all` のときは通常メッセージ本文にも反応します。反応した本文は `codex exec` に渡され、結果が Discord へ返信されます。
-
-## 設定方針
-将来的な実運用では、チャット実装、Agent 実装、Agent workspace を環境変数で切り替えます。
-
-- `AGENT_PORT_CHAT_BACKEND`: 例 `discord`
-- `AGENT_PORT_AGENT_BACKEND`: 例 `codex`
-- `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot トークン
-- `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
-- `AGENT_PORT_DISCORD_TRIGGER_MODE`: `mention` または `all`
-- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パスまたは絶対パス
-- `AGENT_PORT_CODEX_COMMAND`: 実行する Codex CLI コマンド名。既定値は `codex`
-- `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行のタイムアウト秒数
-- `AGENT_PORT_LOG_LEVEL`: 例 `INFO`
-
-workspace のパスは、相対パスでも絶対パスでも指定できます。相対パスは起動ディレクトリ基準で解決します。
-
-## Discord 側の前提
-- Bot トークンを発行済みであること
-- Bot を対象サーバーへ招待済みであること
-- Message Content Intent を有効化していること
+起動後、`mention` モードでは Bot 本体か Bot ロールをメンションしたメッセージだけを処理します。`all` モードでは通常メッセージも処理します。返答は元メッセージへの返信として同じチャンネルに返します。
 
 ## テスト
-自動テストは `pytest` で実行します。
-
 ```powershell
 uv run pytest
 ```
-
-## 更新ルール
-操作手順、実行例、開発フローに変更があった場合は、このファイルを更新してください。パスを記載するときは、リポジトリ基準の相対パスを使ってください。

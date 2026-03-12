@@ -2,18 +2,19 @@
 
 from pathlib import Path
 
-from agent_port.codex_runner import CodexRunner
-from agent_port.config import AppConfig
-from agent_port.discord_bridge import extract_discord_prompt, split_discord_message
+from agent_port.agent_registry import AgentRegistry
+from agent_port.agent_router import AgentRouter
+from agent_port.config import AppConfig, CodexAgentConfig
+from agent_port.discord_bridge import DiscordAgentBridgeClient, extract_discord_prompt, split_discord_message
 
 
 def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
-    """先頭メンション付きメッセージから本文を抽出できることを確認する。
+    """先頭メンション付き本文を prompt として抽出できることを検証する。
 
     Returns
     -------
     None
-        メンションを除いた本文が取り出されることを検証する。
+        Bot メンション除去後の本文だけが残ることを確認する。
     """
 
     prompt = extract_discord_prompt(
@@ -28,12 +29,12 @@ def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
 
 
 def test_extract_discord_prompt_returns_none_when_mention_mode_has_no_mention() -> None:
-    """メンション必須モードでメンションがなければ無視することを確認する。
+    """mention モードでメンションがない場合は無視することを検証する。
 
     Returns
     -------
     None
-        対象外メッセージとして `None` が返ることを検証する。
+        `None` が返ることを確認する。
     """
 
     prompt = extract_discord_prompt(
@@ -47,12 +48,12 @@ def test_extract_discord_prompt_returns_none_when_mention_mode_has_no_mention() 
 
 
 def test_extract_discord_prompt_returns_full_text_in_all_mode() -> None:
-    """全メッセージ反応モードでは本文全体を返すことを確認する。
+    """all モードでは本文全体を prompt として扱うことを検証する。
 
     Returns
     -------
     None
-        先頭加工なしで本文全体が返ることを検証する。
+        メンション有無に関係なく本文が返ることを確認する。
     """
 
     prompt = extract_discord_prompt(
@@ -67,12 +68,12 @@ def test_extract_discord_prompt_returns_full_text_in_all_mode() -> None:
 
 
 def test_extract_discord_prompt_accepts_mention_not_at_start() -> None:
-    """メンションが文中にあっても本文を抽出できることを確認する。
+    """本文途中のメンションでも prompt を抽出できることを検証する。
 
     Returns
     -------
     None
-        文中メンションを除いた本文が返ることを検証する。
+        メンション位置に依存せず本文が残ることを確認する。
     """
 
     prompt = extract_discord_prompt(
@@ -88,12 +89,12 @@ def test_extract_discord_prompt_accepts_mention_not_at_start() -> None:
 
 
 def test_split_discord_message_splits_long_text_into_chunks() -> None:
-    """長文が Discord 上限以内の複数チャンクへ分割されることを確認する。
+    """長文が Discord 制限以下のチャンクへ分割されることを検証する。
 
     Returns
     -------
     None
-        全チャンクが上限以下であり、複数要素に分割されることを検証する。
+        すべてのチャンクが制限以下になることを確認する。
     """
 
     chunks = split_discord_message(text="a" * 4500, limit=2000)
@@ -103,26 +104,29 @@ def test_split_discord_message_splits_long_text_into_chunks() -> None:
 
 
 def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
-    """Bot が持つロールへのメンションでも反応対象になることを確認する。
+    """Bot ロールメンションでも trigger 判定が真になることを検証する。
 
     Returns
     -------
     None
-        Bot 本体がメンションされていなくても、Bot ロールがメンションされていれば `True` になることを検証する。
+        Bot 本体が未メンションでも Bot ロールが含まれれば `True` になることを確認する。
     """
 
     config = AppConfig(
         chat_backend="discord",
-        agent_backend="codex",
+        default_agent_backend="codex",
         discord_bot_token="token",
         discord_application_id=None,
         discord_trigger_mode="mention",
-        agent_workspace=Path(".").resolve(),
-        codex_command="codex",
-        codex_timeout_seconds=300,
+        codex_config=CodexAgentConfig(
+            backend_name="codex",
+            workspace=Path(".").resolve(),
+            command="codex",
+            timeout_seconds=300,
+        ),
         log_level="INFO",
     )
-    client = DiscordCodexBridgeClientForTest(config=config)
+    client = DiscordAgentBridgeClientForTest(config=config)
 
     message = DummyMessage(
         mentioned=False,
@@ -133,38 +137,39 @@ def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
     assert client.is_trigger_mentioned_for_test(message) is True
 
 
-class DiscordCodexBridgeClientForTest:
-    """判定ロジックだけをテストするための簡易ラッパー。"""
+class DiscordAgentBridgeClientForTest:
+    """`_is_trigger_mentioned` を直接検証するためのテスト用ラッパー。"""
 
     def __init__(self, config: AppConfig) -> None:
-        """テスト用ラッパーを初期化する。
+        """Discord bridge の最小状態を構築する。
 
         Parameters
         ----------
         config : AppConfig
-            ダミーの設定値。
+            テスト用設定。
 
         Returns
         -------
         None
-            必要最小限の状態だけを保持する。
+            private メソッド呼び出しに必要な状態だけを埋める。
         """
 
-        from agent_port.discord_bridge import DiscordCodexBridgeClient
-
-        self._client = object.__new__(DiscordCodexBridgeClient)
+        self._client = object.__new__(DiscordAgentBridgeClient)
         self._client._config = config
-        self._client._codex_runner = CodexRunner(config)
+        self._client._agent_router = AgentRouter(
+            registry=AgentRegistry(),
+            default_backend="codex",
+        )
         self._client._logger = None
         self._client._connection = DummyConnection(user=DummyUser(999))
 
     def is_trigger_mentioned_for_test(self, message: "DummyMessage") -> bool:
-        """内部判定関数をテスト用に呼び出す。
+        """内部判定メソッドを呼び出す。
 
         Parameters
         ----------
         message : DummyMessage
-            判定対象のダミーメッセージ。
+            判定対象のテスト用メッセージ。
 
         Returns
         -------
@@ -176,135 +181,135 @@ class DiscordCodexBridgeClientForTest:
 
 
 class DummyConnection:
-    """discord.Client の内部 user 参照だけを満たすダミー接続。"""
+    """`discord.Client.user` 解決用のダミー接続。"""
 
     def __init__(self, user: "DummyUser") -> None:
-        """ダミー接続を初期化する。
+        """ダミー user を保持する。
 
         Parameters
         ----------
         user : DummyUser
-            ダミー Bot ユーザー。
+            テスト用 Bot user。
 
         Returns
         -------
         None
-            user 参照だけを保持する。
+            user 属性へ保存する。
         """
 
         self.user = user
 
 
 class DummyUser:
-    """ユーザーメンション判定だけを持つダミー Bot ユーザー。"""
+    """最小限の Bot user 振る舞いを持つダミー。"""
 
     def __init__(self, user_id: int) -> None:
-        """ダミーユーザーを初期化する。
+        """ユーザー ID を保持する。
 
         Parameters
         ----------
         user_id : int
-            ダミー Bot のユーザー ID。
+            テスト用 user ID。
 
         Returns
         -------
         None
-            ID を保持する。
+            ID を保存する。
         """
 
         self.id = user_id
 
     def mentioned_in(self, message: "DummyMessage") -> bool:
-        """メッセージ内でのユーザーメンション有無を返す。
+        """本文中のメンション判定結果を返す。
 
         Parameters
         ----------
         message : DummyMessage
-            判定対象メッセージ。
+            判定対象のメッセージ。
 
         Returns
         -------
         bool
-            ダミーメッセージが保持する判定値。
+            ダミー message が保持するメンション判定。
         """
 
         return message.mentioned
 
 
 class DummyRole:
-    """ロール ID だけを持つダミーロール。"""
+    """ロール ID だけを持つダミー role。"""
 
     def __init__(self, role_id: int) -> None:
-        """ダミーロールを初期化する。
+        """ロール ID を保持する。
 
         Parameters
         ----------
         role_id : int
-            ロール ID。
+            テスト用ロール ID。
 
         Returns
         -------
         None
-            ID を保持する。
+            ID を保存する。
         """
 
         self.id = role_id
 
 
 class DummyMember:
-    """保持ロール一覧だけを持つダミーメンバー。"""
+    """Bot が持つロール一覧を表すダミー member。"""
 
     def __init__(self, role_ids: list[int]) -> None:
-        """ダミーメンバーを初期化する。
+        """ロール ID 一覧を role オブジェクトへ変換する。
 
         Parameters
         ----------
-        role_ids : list[int]
-            メンバーが持つロール ID 一覧。
-
-        Returns
-        -------
-        None
-            ダミーロールの一覧を保持する。
-        """
-
-        self.roles = [DummyRole(role_id) for role_id in role_ids]
-
-
-class DummyGuild:
-    """Bot メンバー取得だけを持つダミーギルド。"""
-
-    def __init__(self, bot_user_id: int, role_ids: list[int]) -> None:
-        """ダミーギルドを初期化する。
-
-        Parameters
-        ----------
-        bot_user_id : int
-            Bot ユーザー ID。
         role_ids : list[int]
             Bot が持つロール ID 一覧。
 
         Returns
         -------
         None
-            Bot メンバー取得用の状態を保持する。
+            role 属性へ保存する。
+        """
+
+        self.roles = [DummyRole(role_id) for role_id in role_ids]
+
+
+class DummyGuild:
+    """Bot member を返すだけのダミー guild。"""
+
+    def __init__(self, bot_user_id: int, role_ids: list[int]) -> None:
+        """Bot user と member 情報を保持する。
+
+        Parameters
+        ----------
+        bot_user_id : int
+            Bot user ID。
+        role_ids : list[int]
+            Bot が持つロール ID 一覧。
+
+        Returns
+        -------
+        None
+            guild 内の Bot 情報を保存する。
         """
 
         self._bot_user_id = bot_user_id
         self._member = DummyMember(role_ids)
 
     def get_member(self, user_id: int) -> DummyMember | None:
-        """Bot ユーザー ID に一致した場合だけダミーメンバーを返す。
+        """指定 user が Bot の場合だけ member を返す。
 
         Parameters
         ----------
         user_id : int
-            取得対象のユーザー ID。
+            参照対象の user ID。
 
         Returns
         -------
         DummyMember | None
-            Bot 自身ならダミーメンバーを返し、それ以外は `None`。
+            Bot user に一致すれば member、違えば `None`。
         """
 
         if user_id == self._bot_user_id:
@@ -313,7 +318,7 @@ class DummyGuild:
 
 
 class DummyMessage:
-    """判定に必要な最小属性だけを持つダミーメッセージ。"""
+    """trigger 判定に必要な属性だけを持つダミーメッセージ。"""
 
     def __init__(
         self,
@@ -321,21 +326,21 @@ class DummyMessage:
         guild: DummyGuild | None,
         role_mention_ids: list[int],
     ) -> None:
-        """ダミーメッセージを初期化する。
+        """テスト用メッセージ状態を保持する。
 
         Parameters
         ----------
         mentioned : bool
-            Bot 本体がメンションされているかどうか。
+            Bot 本体メンション判定。
         guild : DummyGuild | None
-            所属ギルド。
+            所属 guild。
         role_mention_ids : list[int]
-            メッセージに含まれるロールメンション ID 一覧。
+            本文に含まれるロールメンション ID 一覧。
 
         Returns
         -------
         None
-            判定に必要な状態を保持する。
+            trigger 判定用の属性を保存する。
         """
 
         self.mentioned = mentioned

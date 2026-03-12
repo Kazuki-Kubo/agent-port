@@ -1,17 +1,19 @@
-"""アプリケーションの起動処理を提供するモジュール。"""
+"""アプリケーション起動処理をまとめるモジュール。"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 
+from agent_port.agent_registry import AgentRegistry
+from agent_port.agent_router import AgentRouter
 from agent_port.codex_runner import CodexRunner
 from agent_port.config import AppConfig, ConfigError
-from agent_port.discord_bridge import DiscordCodexBridgeClient
+from agent_port.discord_bridge import DiscordAgentBridgeClient
 
 
 def build_startup_summary(config: AppConfig) -> str:
-    """起動時に表示する設定サマリーを生成する。
+    """起動時に表示する設定要約を組み立てる。
 
     Parameters
     ----------
@@ -21,13 +23,14 @@ def build_startup_summary(config: AppConfig) -> str:
     Returns
     -------
     str
-        利用中のバックエンドや Discord トリガー方式を含む表示文字列。
+        起動ログに出す複数行の設定要約。
     """
 
     lines = [
         "agent-port is ready.",
         f"chat_backend={config.chat_backend}",
-        f"agent_backend={config.agent_backend}",
+        f"default_agent_backend={config.default_agent_backend}",
+        f"available_agent_backends={','.join(config.list_agent_backends())}",
         f"discord_trigger_mode={config.discord_trigger_mode}",
         f"agent_workspace={config.agent_workspace}",
         f"codex_command={config.codex_command}",
@@ -37,12 +40,12 @@ def build_startup_summary(config: AppConfig) -> str:
 
 
 def main() -> None:
-    """環境変数から設定を読み込み、対応する実行経路を起動する。
+    """環境変数から設定を読み込み、起動処理を実行する。
 
     Returns
     -------
     None
-        サポート済みのバックエンドなら Bot を起動し、そうでなければ例外を送出する。
+        ログ設定後にアプリケーションを起動する。
     """
 
     config = AppConfig.from_env()
@@ -52,17 +55,17 @@ def main() -> None:
 
 
 def configure_logging(log_level: str) -> None:
-    """アプリケーション全体のログ設定を行う。
+    """ロギングを初期化する。
 
     Parameters
     ----------
     log_level : str
-        設定するログレベル名。
+        ログ出力レベル。
 
     Returns
     -------
     None
-        標準出力向けの基本ログ設定を有効化する。
+        標準出力向けの logging 設定を適用する。
     """
 
     logging.basicConfig(
@@ -71,49 +74,85 @@ def configure_logging(log_level: str) -> None:
     )
 
 
-def run_application(config: AppConfig) -> None:
-    """対応するバックエンド構成でアプリケーションを起動する。
+def build_agent_registry(config: AppConfig) -> AgentRegistry:
+    """設定から Agent registry を構築する。
 
     Parameters
     ----------
     config : AppConfig
-        実行対象の設定。
+        Agent backend 設定を含むアプリケーション設定。
+
+    Returns
+    -------
+    AgentRegistry
+        利用可能な Agent 実装を登録済みの registry。
+    """
+
+    return AgentRegistry([CodexRunner(config.codex_config)])
+
+
+def build_agent_router(config: AppConfig) -> AgentRouter:
+    """設定から Agent router を構築する。
+
+    Parameters
+    ----------
+    config : AppConfig
+        既定 backend を含むアプリケーション設定。
+
+    Returns
+    -------
+    AgentRouter
+        registry と既定 backend を保持する router。
+    """
+
+    registry = build_agent_registry(config)
+    return AgentRouter(
+        registry=registry,
+        default_backend=config.default_agent_backend,
+    )
+
+
+def run_application(config: AppConfig) -> None:
+    """設定に基づいてアプリケーションを起動する。
+
+    Parameters
+    ----------
+    config : AppConfig
+        起動対象の設定。
 
     Returns
     -------
     None
-        Discord と Codex の最小ブリッジを起動する。
+        対応 backend を起動する。
 
     Raises
     ------
     ConfigError
-        未対応のバックエンド構成が指定された場合。
+        未対応の chat backend が指定された場合。
     """
 
-    if config.chat_backend != "discord" or config.agent_backend != "codex":
+    if config.chat_backend != "discord":
         raise ConfigError(
-            "現在の最小実装で対応している組み合わせは "
-            "AGENT_PORT_CHAT_BACKEND=discord と "
-            "AGENT_PORT_AGENT_BACKEND=codex のみです。"
+            "現在の最小実装で対応している chat backend は discord のみです。"
         )
 
-    asyncio.run(run_discord_codex_bridge(config))
+    asyncio.run(run_discord_agent_bridge(config))
 
 
-async def run_discord_codex_bridge(config: AppConfig) -> None:
-    """Discord と Codex を接続する最小ブリッジを起動する。
+async def run_discord_agent_bridge(config: AppConfig) -> None:
+    """Discord から Agent へ中継する bridge を起動する。
 
     Parameters
     ----------
     config : AppConfig
-        Discord と Codex 実行に必要な設定。
+        Discord と Agent 設定を含むアプリケーション設定。
 
     Returns
     -------
     None
-        Bot の接続が終了するまで待機する。
+        Bot 終了まで待機する。
     """
 
-    codex_runner = CodexRunner(config)
-    client = DiscordCodexBridgeClient(config=config, codex_runner=codex_runner)
+    agent_router = build_agent_router(config)
+    client = DiscordAgentBridgeClient(config=config, agent_router=agent_router)
     await client.start(config.discord_bot_token)

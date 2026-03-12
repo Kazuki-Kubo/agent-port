@@ -1,36 +1,37 @@
 # agent-port
 
-`agent-port` は、Discord などのチャットツールから Codex CLI などの AI Agent へ要求を中継する仲介ソフトウェアです。第一段階では Discord と Codex CLI を接続し、Discord を Codex の UI として使うことを目指します。開発環境の管理と実行には `uv` を使います。
+`agent-port` は、Discord などのチャットツールと Codex CLI などの Agent を中継するソフトウェアです。現時点の最小実装は `Discord -> AgentRouter -> Codex CLI` で動作します。将来的にチャットツールや Agent を増やせるよう、内部は adapter と router を前提に整理しています。
 
 ## ドキュメント
-ドキュメントは `docs/` 配下で管理し、次の 2 種類を保存します。
-
-- `docs/usage.md`: 使い方、実行手順、運用手順
+- `docs/usage.md`: セットアップと実行手順
 - `docs/specs.md`: 仕様の入口
 - `docs/specs/`: 詳細仕様
 
-ファイル名は簡潔で分かりやすいものを使ってください。パスはフォルダを移動しやすいように、常にリポジトリ基準の相対パスで記載してください。使い方や仕様が大きくなった場合は、`docs/usage/` や `docs/specs/` のようにフォルダへ分割してください。
+ドキュメント内のパスは、移動しやすさを優先してリポジトリ基準の相対パスで記述します。使い方や仕様が大きくなった場合は、`docs/usage/` や `docs/specs/` のようにフォルダへ分割します。
 
 ## セットアップ
 ```powershell
 uv sync --dev
 ```
 
-必要な環境変数は [`.env.example`](/C:/Users/久保一輝/Desktop/自作エージェント/agent-port/.env.example) をひな形にして `.env` へ配置できます。`.env` は起動時に自動で読み込みます。
+`.env.example` を参考に `.env` を作成します。秘密値は `.env` に置き、共有時は `.env.example` だけを使います。
 
 ## 実行
 ```powershell
 uv run python main.py
 ```
 
-設定は環境変数で与えます。workspace は相対パスでも絶対パスでも指定できます。`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot をメンションしたメッセージにだけ反応し、`all` のときは通常メッセージにも反応します。反応した本文は指定 workspace で `codex exec` に渡されます。
+`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot 本体または Bot ロールのメンション付きメッセージに反応します。`all` のときは通常メッセージにも反応します。
 
 ## テスト
 ```powershell
 uv run pytest
 ```
 
-## 開発メモ
-- Python バージョンは 3.12 です。
-- 関数、クラス、メソッド、テストには日本語の NumPy 形式 docstring を付けます。
-- 詳細な運用ルールは `AGENTS.md` を参照してください。
+## 現在の推奨環境変数
+- `AGENT_PORT_CHAT_BACKEND=discord`
+- `AGENT_PORT_DEFAULT_AGENT=codex`
+- `AGENT_PORT_CODEX_WORKSPACE=.` または絶対パス
+- `AGENT_PORT_CODEX_COMMAND=codex`
+
+`AGENT_PORT_AGENT_BACKEND` と `AGENT_PORT_AGENT_WORKSPACE` は後方互換として読み取りますが、新規設定では使わない方針です。

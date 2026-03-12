@@ -1,4 +1,4 @@
-"""Discord と Codex CLI をつなぐ最小のブリッジ。"""
+"""Discord と Agent を中継するブリッジ。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ import logging
 
 import discord
 
-from agent_port.codex_runner import CodexExecutionError, CodexRunner
+from agent_port.agent_router import AgentRouter, AgentRouterError
+from agent_port.codex_runner import CodexExecutionError
 from agent_port.config import AppConfig
 
 DISCORD_MESSAGE_LIMIT = 2000
@@ -15,63 +16,64 @@ DISCORD_MESSAGE_LIMIT = 2000
 
 @dataclass(frozen=True)
 class DiscordPrompt:
-    """Discord から抽出した実行対象プロンプトを保持する。
+    """Discord から取り出した実行用 prompt。
 
     Attributes
     ----------
     prompt : str
-        Codex へ渡す本文。
+        Agent に渡す最終 prompt。
     """
 
     prompt: str
 
 
-class DiscordCodexBridgeClient(discord.Client):
-    """Discord メッセージを Codex CLI へ中継するクライアント。"""
+class DiscordAgentBridgeClient(discord.Client):
+    """Discord メッセージを Agent へ中継する Client。"""
 
-    def __init__(self, config: AppConfig, codex_runner: CodexRunner) -> None:
-        """Discord クライアントを初期化する。
+    def __init__(self, config: AppConfig, agent_router: AgentRouter) -> None:
+        """Discord bridge を初期化する。
 
         Parameters
         ----------
         config : AppConfig
-            実行設定。
-        codex_runner : CodexRunner
-            Codex 実行を担当するランナー。
+            Discord 側の設定。
+        agent_router : AgentRouter
+            Prompt を適切な Agent へ振り分ける router。
 
         Returns
         -------
         None
-            Discord へ接続するクライアントを初期化する。
+            Discord Client と依存オブジェクトを構築する。
         """
 
         intents = discord.Intents.default()
         intents.message_content = True
         super().__init__(intents=intents)
         self._config = config
-        self._codex_runner = codex_runner
+        self._agent_router = agent_router
         self._logger = logging.getLogger(__name__)
 
     async def on_ready(self) -> None:
-        """接続完了時にログを出力する。
+        """Bot 接続完了時に設定をログ出力する。
 
         Returns
         -------
         None
-            接続済み Bot 名と設定済みトリガー方式をログ出力する。
+            接続済み Bot 名と trigger mode をログへ出力する。
         """
 
         if self.user is None:
             return
 
         self._logger.info(
-            "Discord Bot connected as %s with trigger_mode %s",
+            "Discord Bot connected as %s with trigger_mode %s default_agent=%s",
             self.user,
             self._config.discord_trigger_mode,
+            self._agent_router.get_default_backend(),
         )
 
     async def on_message(self, message: discord.Message) -> None:
-        """Discord メッセージを受け取って Codex 実行を行う。
+        """Discord メッセージを受信して Agent を実行する。
 
         Parameters
         ----------
@@ -81,7 +83,7 @@ class DiscordCodexBridgeClient(discord.Client):
         Returns
         -------
         None
-            対象メッセージなら Codex へ中継し、応答を Discord へ返す。
+            条件に合うメッセージだけ中継し、同じチャンネルへ返信する。
         """
 
         if message.author.bot:
@@ -116,38 +118,40 @@ class DiscordCodexBridgeClient(discord.Client):
             if self._config.discord_trigger_mode == "mention" and is_bot_mentioned:
                 await send_discord_text(
                     message,
-                    "Botをメンションしたあとに本文も送ってください。",
+                    "Bot をメンションしたあとに本文も送ってください。",
                 )
             return
 
         self._logger.info(
-            "Executing Codex for channel=%s author=%s prompt_length=%s",
+            "Executing agent for channel=%s author=%s prompt_length=%s backend=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             len(prompt.prompt),
+            self._agent_router.get_default_backend(),
         )
         async with message.channel.typing():
             try:
-                result = await self._codex_runner.run_prompt(prompt.prompt)
-            except CodexExecutionError as exc:
+                result = await self._agent_router.run_prompt(prompt.prompt)
+            except (AgentRouterError, CodexExecutionError) as exc:
                 self._logger.exception(
-                    "Codex execution failed channel=%s author=%s",
+                    "Agent execution failed channel=%s author=%s",
                     getattr(message.channel, "id", "unknown"),
                     message.author,
                 )
-                await send_discord_text(message, f"Codex 実行エラー:\n{exc}")
+                await send_discord_text(message, f"Agent 実行エラー:\n{exc}")
                 return
 
         self._logger.info(
-            "Sending Discord reply channel=%s author=%s response_length=%s",
+            "Sending Discord reply channel=%s author=%s backend=%s response_length=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
+            result.backend_name,
             len(result.message),
         )
         await send_discord_text(message, result.message)
 
     def _is_trigger_mentioned(self, message: discord.Message) -> bool:
-        """Bot へのユーザーメンションまたは Bot 所属ロールのメンションを判定する。
+        """Bot または Bot ロールがメンションされたか判定する。
 
         Parameters
         ----------
@@ -157,7 +161,7 @@ class DiscordCodexBridgeClient(discord.Client):
         Returns
         -------
         bool
-            Bot 本体か、Bot が持つロールがメンションされていれば `True`。
+            Bot 本体または Bot ロールがメンションされていれば `True`。
         """
 
         if self.user is not None and self.user.mentioned_in(message):
@@ -175,29 +179,32 @@ class DiscordCodexBridgeClient(discord.Client):
         return bool(bot_role_ids & mentioned_role_ids)
 
 
+DiscordCodexBridgeClient = DiscordAgentBridgeClient
+
+
 def extract_discord_prompt(
     content: str,
     trigger_mode: str,
     bot_user_id: int | None,
     is_bot_mentioned: bool,
 ) -> DiscordPrompt | None:
-    """Discord メッセージから Codex 実行対象の本文を取り出す。
+    """Discord メッセージから Agent 用 prompt を取り出す。
 
     Parameters
     ----------
     content : str
-        Discord 上のメッセージ本文。
+        Discord の生メッセージ本文。
     trigger_mode : str
-        反応条件。`mention` または `all`。
+        `mention` または `all`。
     bot_user_id : int | None
-        メンション判定に使う Bot ユーザー ID。
+        Bot ユーザー ID。
     is_bot_mentioned : bool
-        Discord 側で Bot がメンションされたと判定できているかどうか。
+        受信時点で Bot か Bot ロールがメンションされたかどうか。
 
     Returns
     -------
     DiscordPrompt | None
-        対象メッセージなら抽出結果を返し、対象外なら `None` を返す。
+        有効な prompt が得られた場合はその内容。無効なら `None`。
     """
 
     normalized_content = content.strip()
@@ -223,19 +230,19 @@ def extract_discord_prompt(
 
 
 def _strip_bot_mention(content: str, bot_user_id: int) -> str:
-    """Bot メンションを取り除いた本文を返す。
+    """Bot メンションを除去した本文を返す。
 
     Parameters
     ----------
     content : str
         Discord メッセージ本文。
     bot_user_id : int
-        取り除き対象の Bot ユーザー ID。
+        Bot ユーザー ID。
 
     Returns
     -------
     str
-        Bot メンションを除いた本文。本文が残らなければ空文字。
+        Bot メンション除去後の本文。
     """
 
     mention_variants = [f"<@{bot_user_id}>", f"<@!{bot_user_id}>"]
@@ -245,23 +252,20 @@ def _strip_bot_mention(content: str, bot_user_id: int) -> str:
     return normalized_content.strip()
 
 
-async def send_discord_text(
-    message: discord.Message,
-    text: str,
-) -> None:
-    """Discord の文字数制限に合わせて返信を分割送信する。
+async def send_discord_text(message: discord.Message, text: str) -> None:
+    """Discord の文字数制限に合わせて返信する。
 
     Parameters
     ----------
     message : discord.Message
         返信先となる元メッセージ。
     text : str
-        送信したい全文。
+        返信する本文。
 
     Returns
     -------
     None
-        文字数制限に合わせて分割しながら返信する。
+        必要に応じて複数チャンクに分割して返信する。
     """
 
     chunks = split_discord_message(text=text, limit=DISCORD_MESSAGE_LIMIT)
@@ -276,19 +280,19 @@ async def send_discord_text(
 
 
 def split_discord_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list[str]:
-    """Discord へ送る文字列を上限文字数で分割する。
+    """長文を Discord 送信可能なチャンクへ分割する。
 
     Parameters
     ----------
     text : str
-        分割対象の文字列。
+        分割対象の本文。
     limit : int, default=DISCORD_MESSAGE_LIMIT
         1 メッセージあたりの最大文字数。
 
     Returns
     -------
     list[str]
-        Discord へ送信可能な文字列チャンクの配列。
+        Discord へ順番に送る本文チャンク一覧。
     """
 
     normalized_text = text.strip()
@@ -319,19 +323,19 @@ def split_discord_message(text: str, limit: int = DISCORD_MESSAGE_LIMIT) -> list
 
 
 def _split_long_line(line: str, limit: int) -> list[str]:
-    """上限を超える 1 行を固定長で分割する。
+    """長すぎる 1 行を固定長で分割する。
 
     Parameters
     ----------
     line : str
-        分割対象の 1 行文字列。
+        分割対象の 1 行。
     limit : int
         1 チャンクあたりの最大文字数。
 
     Returns
     -------
     list[str]
-        分割済みの文字列チャンク。
+        分割後のチャンク一覧。
     """
 
     chunks: list[str] = []
