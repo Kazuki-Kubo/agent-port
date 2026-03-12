@@ -18,8 +18,12 @@ uv sync --dev
 
 ## 実行
 ```powershell
+$env:AGENT_PORT_DISCORD_BOT_TOKEN="your-bot-token"
+$env:AGENT_PORT_AGENT_WORKSPACE="workspace/sample"
 uv run python main.py
 ```
+
+設定は環境変数で与えます。workspace は相対パスで指定します。
 
 ## テスト
 ```powershell

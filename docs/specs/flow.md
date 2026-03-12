@@ -4,7 +4,7 @@
 1. Chat Adapter がチャットメッセージを受信します。
 2. Chat Adapter が受信内容を内部イベントへ変換して Core に渡します。
 3. Core が `Conversation` を特定し、対応する `Session` を取得または作成します。
-4. Core が入力と設定済み workspace を Agent Adapter 向けの要求へ変換します。
+4. Core が環境変数から読み込んだ設定と入力を Agent Adapter 向けの要求へ変換します。
 5. Agent Adapter が指定された workspace で Agent を実行し、応答をストリームまたは完了イベントとして返します。
 6. Core が応答をチャット向けに整形します。
 7. Chat Adapter が元の会話へ応答を送信または更新します。

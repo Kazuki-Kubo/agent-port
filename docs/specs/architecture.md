@@ -93,15 +93,18 @@ Core は仲介層であり、Agent の本体機能を実装しません。役割
 ### 設定
 実行時に使用する Chat Adapter と Agent Adapter は設定で選択できるようにします。
 
-初期仕様では、少なくとも次の設定項目を持ちます。
+初期仕様では、少なくとも次の設定項目を環境変数で持ちます。
 
-- `chat_backend`: 利用するチャット実装の識別子。例: `discord`
-- `agent_backend`: 利用する Agent 実装の識別子。例: `codex`
-- `agent_workspace`: Agent を実行する workspace の相対パスまたは設定名
-- `session_store`: セッション保存方式の識別子。初期値はメモリ上の保存
-- `log_level`: ログ出力レベル
+- `AGENT_PORT_CHAT_BACKEND`: 利用するチャット実装の識別子。例: `discord`
+- `AGENT_PORT_AGENT_BACKEND`: 利用する Agent 実装の識別子。例: `codex`
+- `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot 接続用トークン
+- `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
+- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パスまたは設定名
+- `AGENT_PORT_LOG_LEVEL`: ログ出力レベル
 
-`agent_workspace` はリポジトリ基準または設定基準の相対パスで扱い、絶対パスへ固定しません。これにより、環境移動やデプロイ先変更に追従しやすくします。
+`AGENT_PORT_AGENT_WORKSPACE` はリポジトリ基準または設定基準の相対パスで扱い、絶対パスへ固定しません。これにより、環境移動やデプロイ先変更に追従しやすくします。
+
+`AGENT_PORT_CHAT_BACKEND=discord` の場合は、`AGENT_PORT_DISCORD_BOT_TOKEN` を必須とします。
 
 ## 初期実装方針
 初期実装では単一プロセス構成とし、Core が Chat Adapter と Agent Adapter を直接呼び出します。将来はキューやワーカーを挟めるように、Core の入出力形式はできるだけ純粋なデータ構造で保ちます。
