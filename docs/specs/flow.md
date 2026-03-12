@@ -4,8 +4,8 @@
 1. Chat Adapter がチャットメッセージを受信します。
 2. Chat Adapter が受信内容を内部イベントへ変換して Core に渡します。
 3. Core が `Conversation` を特定し、対応する `Session` を取得または作成します。
-4. Core が入力を Agent Adapter 向けの要求へ変換します。
-5. Agent Adapter が Agent を実行し、応答をストリームまたは完了イベントとして返します。
+4. Core が入力と設定済み workspace を Agent Adapter 向けの要求へ変換します。
+5. Agent Adapter が指定された workspace で Agent を実行し、応答をストリームまたは完了イベントとして返します。
 6. Core が応答をチャット向けに整形します。
 7. Chat Adapter が元の会話へ応答を送信または更新します。
 
@@ -27,6 +27,7 @@
 ## セッション管理
 - `Conversation` 単位で `Session` を保持します。
 - セッションには少なくとも会話 ID、利用中の Agent 種別、最終更新時刻を保持します。
+- 必要に応じて、その会話で利用する workspace も保持します。
 - 明示的なリセット操作で、該当会話の `Session` を破棄または再初期化します。
 
 初期仕様では、`Conversation` を一意に識別できる相対的な内部キーを持ちます。たとえば Discord では、ギルド ID、チャンネル ID、スレッド ID の組み合わせを内部で 1 つのキーへ正規化します。
@@ -42,6 +43,7 @@
 - 通常メッセージ送信: Agent への問い合わせ
 - セッションリセット: 会話に紐づく状態の初期化
 - ステータス確認: 利用中の Agent や接続状態の確認
+- workspace 設定: その会話で利用する Agent workspace の変更または確認
 
 ## 初期実装の優先順位
 1. Discord からテキストを受信し、Codex CLI へ渡せること

@@ -1,6 +1,6 @@
 # agent-port
 
-`agent-port` は、チャットツールと AI Agent を仲介するソフトウェアです。第一段階では Discord と Codex CLI を接続し、Discord を Codex の UI として使うことを目指します。開発環境の管理と実行には `uv` を使います。
+`agent-port` は、Discord などのチャットツールから Codex CLI などの AI Agent へ要求を中継する仲介ソフトウェアです。第一段階では Discord と Codex CLI を接続し、Discord を Codex の UI として使うことを目指します。開発環境の管理と実行には `uv` を使います。
 
 ## ドキュメント
 ドキュメントは `docs/` 配下で管理し、次の 2 種類を保存します。
