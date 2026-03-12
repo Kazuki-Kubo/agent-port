@@ -54,7 +54,7 @@ class AppConfig:
         Parameters
         ----------
         base_dir : Path | None, default=None
-            相対パスの基準ディレクトリ。未指定時は現在の作業ディレクトリを使う。
+            相対パスを解決する基準ディレクトリ。未指定時は現在の作業ディレクトリを使う。
 
         Returns
         -------
@@ -236,14 +236,14 @@ def _read_choice_env(name: str, default: str, allowed_values: set[str]) -> str:
 
 
 def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:
-    """workspace の相対パスを解決する。
+    """workspace のパスを絶対パスへ解決する。
 
     Parameters
     ----------
     workspace_value : str
         環境変数で受け取った workspace のパス文字列。
     base_dir : Path
-        相対パスの基準ディレクトリ。
+        相対パスを解決する基準ディレクトリ。
 
     Returns
     -------
@@ -253,7 +253,7 @@ def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:
     Raises
     ------
     ConfigError
-        workspace が空文字または絶対パスだった場合。
+        workspace が空文字だった場合。
     """
 
     normalized_value = workspace_value.strip()
@@ -262,8 +262,6 @@ def _resolve_relative_workspace(workspace_value: str, base_dir: Path) -> Path:
 
     workspace_path = Path(normalized_value)
     if workspace_path.is_absolute():
-        raise ConfigError(
-            "AGENT_PORT_AGENT_WORKSPACE は相対パスで指定してください。"
-        )
+        return workspace_path.resolve()
 
     return (base_dir / workspace_path).resolve()

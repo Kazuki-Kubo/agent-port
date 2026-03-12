@@ -26,12 +26,12 @@ uv run python main.py
 - `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot トークン
 - `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
 - `AGENT_PORT_DISCORD_TRIGGER_MODE`: `mention` または `all`
-- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パス
+- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パスまたは絶対パス
 - `AGENT_PORT_CODEX_COMMAND`: 実行する Codex CLI コマンド名。既定値は `codex`
 - `AGENT_PORT_CODEX_TIMEOUT_SECONDS`: Codex 実行のタイムアウト秒数
 - `AGENT_PORT_LOG_LEVEL`: 例 `INFO`
 
-workspace のパスは、環境移動しやすいように相対パスで管理します。
+workspace のパスは、相対パスでも絶対パスでも指定できます。相対パスは起動ディレクトリ基準で解決します。
 
 ## Discord 側の前提
 - Bot トークンを発行済みであること

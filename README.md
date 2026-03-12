@@ -23,7 +23,7 @@ uv sync --dev
 uv run python main.py
 ```
 
-設定は環境変数で与えます。workspace は相対パスで指定します。`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot をメンションしたメッセージにだけ反応し、`all` のときは通常メッセージにも反応します。反応した本文は指定 workspace で `codex exec` に渡されます。
+設定は環境変数で与えます。workspace は相対パスでも絶対パスでも指定できます。`AGENT_PORT_DISCORD_TRIGGER_MODE=mention` のときは Bot をメンションしたメッセージにだけ反応し、`all` のときは通常メッセージにも反応します。反応した本文は指定 workspace で `codex exec` に渡されます。
 
 ## テスト
 ```powershell

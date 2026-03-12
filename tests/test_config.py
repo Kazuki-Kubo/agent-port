@@ -109,11 +109,11 @@ def test_from_env_requires_discord_token_for_discord_backend(
         AppConfig.from_env(base_dir=tmp_path)
 
 
-def test_from_env_rejects_absolute_workspace_path(
+def test_from_env_accepts_absolute_workspace_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """workspace が絶対パスの場合は拒否することを確認する。
+    """workspace が絶対パスでも利用できることを確認する。
 
     Parameters
     ----------
@@ -125,14 +125,15 @@ def test_from_env_rejects_absolute_workspace_path(
     Returns
     -------
     None
-        相対パスのみ許可されることを検証する。
+        絶対パスがそのまま採用されることを検証する。
     """
 
     monkeypatch.setenv("AGENT_PORT_CHAT_BACKEND", "console")
     monkeypatch.setenv("AGENT_PORT_AGENT_WORKSPACE", str(tmp_path.resolve()))
 
-    with pytest.raises(ConfigError):
-        AppConfig.from_env(base_dir=tmp_path)
+    config = AppConfig.from_env(base_dir=tmp_path)
+
+    assert config.agent_workspace == tmp_path.resolve()
 
 
 def test_from_env_rejects_non_positive_timeout(

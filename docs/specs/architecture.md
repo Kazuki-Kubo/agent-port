@@ -100,10 +100,10 @@ Core は仲介層であり、Agent の本体機能を実装しません。役割
 - `AGENT_PORT_DISCORD_BOT_TOKEN`: Discord Bot 接続用トークン
 - `AGENT_PORT_DISCORD_APPLICATION_ID`: Discord アプリケーション ID
 - `AGENT_PORT_DISCORD_TRIGGER_MODE`: Discord の反応条件。`mention` または `all`
-- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パスまたは設定名
+- `AGENT_PORT_AGENT_WORKSPACE`: Agent を実行する workspace の相対パス、絶対パス、または設定名
 - `AGENT_PORT_LOG_LEVEL`: ログ出力レベル
 
-`AGENT_PORT_AGENT_WORKSPACE` はリポジトリ基準または設定基準の相対パスで扱い、絶対パスへ固定しません。これにより、環境移動やデプロイ先変更に追従しやすくします。
+`AGENT_PORT_AGENT_WORKSPACE` は相対パスと絶対パスの両方を許可します。相対パスは設定基準ディレクトリから解決し、絶対パスはそのまま利用します。
 
 `AGENT_PORT_CHAT_BACKEND=discord` の場合は、`AGENT_PORT_DISCORD_BOT_TOKEN` を必須とします。
 
