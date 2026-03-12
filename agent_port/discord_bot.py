@@ -93,6 +93,7 @@ class DiscordBot(discord.Client):
             content=message.content,
             trigger_mode=self._config.discord_trigger,
             bot_user_id=self.user.id if self.user is not None else None,
+            bot_role_ids=self._get_bot_role_ids(message),
             is_bot_mentioned=mentioned,
         )
         if prompt is None:
@@ -153,16 +154,34 @@ class DiscordBot(discord.Client):
 
         if self.user is not None and self.user.mentioned_in(message):
             return True
-        if self.user is None or message.guild is None:
+        bot_role_ids = self._get_bot_role_ids(message)
+        if not bot_role_ids:
             return False
+        mentioned_role_ids = {role.id for role in message.role_mentions}
+        return bool(bot_role_ids & mentioned_role_ids)
+
+    def _get_bot_role_ids(self, message: discord.Message) -> set[int]:
+        """Bot が持つ role ID 一覧を返す。
+
+        Parameters
+        ----------
+        message : discord.Message
+            受信メッセージ。
+
+        Returns
+        -------
+        set[int]
+            Bot が持つ role ID 一覧。取得できなければ空集合。
+        """
+
+        if self.user is None or message.guild is None:
+            return set()
 
         bot_member = message.guild.get_member(self.user.id)
         if bot_member is None:
-            return False
+            return set()
 
-        bot_role_ids = {role.id for role in bot_member.roles}
-        mentioned_role_ids = {role.id for role in message.role_mentions}
-        return bool(bot_role_ids & mentioned_role_ids)
+        return {role.id for role in bot_member.roles}
 
 
 DiscordAgentBridgeClient = DiscordBot

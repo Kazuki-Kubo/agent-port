@@ -28,6 +28,7 @@ def test_extract_discord_prompt_strips_leading_mention() -> None:
         content="<@123> hello world",
         trigger_mode="mention",
         bot_user_id=123,
+        bot_role_ids=set(),
         is_bot_mentioned=True,
     )
 
@@ -48,6 +49,7 @@ def test_extract_discord_prompt_returns_none_without_mention() -> None:
         content="hello world",
         trigger_mode="mention",
         bot_user_id=123,
+        bot_role_ids=set(),
         is_bot_mentioned=False,
     )
 
@@ -67,6 +69,7 @@ def test_extract_discord_prompt_uses_all_mode() -> None:
         content="hello world",
         trigger_mode="all",
         bot_user_id=None,
+        bot_role_ids=set(),
         is_bot_mentioned=False,
     )
 
@@ -87,6 +90,7 @@ def test_extract_discord_prompt_accepts_mid_mention() -> None:
         content="hello <@123> world",
         trigger_mode="mention",
         bot_user_id=123,
+        bot_role_ids=set(),
         is_bot_mentioned=True,
     )
 
@@ -108,6 +112,27 @@ def test_split_discord_message_splits_long_text() -> None:
 
     assert len(chunks) == 3
     assert all(len(chunk) <= 2000 for chunk in chunks)
+
+
+def test_extract_discord_prompt_strips_role_mention() -> None:
+    """Bot role のメンションも prompt から除去することを確認する。
+
+    Returns
+    -------
+    None
+        role mention を含まない本文だけが残ることを確認する。
+    """
+
+    prompt = extract_discord_prompt(
+        content="<@&456> どう？",
+        trigger_mode="mention",
+        bot_user_id=123,
+        bot_role_ids={456},
+        is_bot_mentioned=True,
+    )
+
+    assert prompt is not None
+    assert prompt.prompt == "どう？"
 
 
 def test_extract_discord_delivery_reads_thread_directive() -> None:

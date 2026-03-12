@@ -70,6 +70,7 @@ def extract_discord_prompt(
     content: str,
     trigger_mode: str,
     bot_user_id: int | None,
+    bot_role_ids: set[int] | None,
     is_bot_mentioned: bool,
 ) -> DiscordPrompt | None:
     """Discord メッセージから prompt を取り出す。
@@ -100,7 +101,11 @@ def extract_discord_prompt(
     elif trigger_mode == "mention":
         if bot_user_id is None or not is_bot_mentioned:
             return None
-        prompt = strip_bot_mention(content=text, bot_user_id=bot_user_id)
+        prompt = strip_bot_mention(
+            content=text,
+            bot_user_id=bot_user_id,
+            bot_role_ids=bot_role_ids or set(),
+        )
     else:
         return None
 
@@ -109,7 +114,11 @@ def extract_discord_prompt(
     return DiscordPrompt(prompt=prompt)
 
 
-def strip_bot_mention(content: str, bot_user_id: int) -> str:
+def strip_bot_mention(
+    content: str,
+    bot_user_id: int,
+    bot_role_ids: set[int],
+) -> str:
     """Bot メンションを本文から除去する。
 
     Parameters
@@ -126,7 +135,12 @@ def strip_bot_mention(content: str, bot_user_id: int) -> str:
     """
 
     text = content
-    for mention in (f"<@{bot_user_id}>", f"<@!{bot_user_id}>"):
+    mentions = [
+        f"<@{bot_user_id}>",
+        f"<@!{bot_user_id}>",
+        *(f"<@&{role_id}>" for role_id in bot_role_ids),
+    ]
+    for mention in mentions:
         text = text.replace(mention, " ")
     return text.strip()
 
