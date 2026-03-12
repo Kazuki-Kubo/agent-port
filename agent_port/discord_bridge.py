@@ -82,10 +82,11 @@ class DiscordAgentBridgeClient(discord.Client):
             return
 
         self._logger.info(
-            "Discord Bot connected as %s with trigger_mode %s default_agent=%s",
+            "Discord Bot connected as %s with trigger_mode %s default_agent=%s default_workspace=%s",
             self.user,
             self._config.discord_trigger_mode,
             self._agent_router.get_default_backend(),
+            self._agent_router.get_default_workspace_id(),
         )
 
     async def on_message(self, message: discord.Message) -> None:
@@ -139,11 +140,12 @@ class DiscordAgentBridgeClient(discord.Client):
             return
 
         self._logger.info(
-            "Executing agent for channel=%s author=%s prompt_length=%s backend=%s",
+            "Executing agent for channel=%s author=%s prompt_length=%s backend=%s workspace_id=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             len(prompt.prompt),
             self._agent_router.get_default_backend(),
+            self._agent_router.get_default_workspace_id(),
         )
         async with message.channel.typing():
             try:
@@ -158,10 +160,11 @@ class DiscordAgentBridgeClient(discord.Client):
                 return
 
         self._logger.info(
-            "Sending Discord response channel=%s author=%s backend=%s response_length=%s delivery_mode=%s",
+            "Sending Discord response channel=%s author=%s backend=%s workspace_id=%s response_length=%s delivery_mode=%s",
             getattr(message.channel, "id", "unknown"),
             message.author,
             result.backend_name,
+            result.workspace_id,
             len(result.message),
             extract_discord_delivery(result.message).mode,
         )

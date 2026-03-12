@@ -1,0 +1,10 @@
+{
+  "workspaces": [
+    {
+      "id": "sample",
+      "path": "../../workspace/sample",
+      "allowed_agents": ["codex"],
+      "description": "サンプル workspace"
+    }
+  ]
+}

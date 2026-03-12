@@ -30,9 +30,12 @@ def build_startup_summary(config: AppConfig) -> str:
         "agent-port is ready.",
         f"chat_backend={config.chat_backend}",
         f"default_agent_backend={config.default_agent_backend}",
+        f"default_workspace_id={config.default_workspace_id}",
         f"available_agent_backends={','.join(config.list_agent_backends())}",
+        f"available_workspace_ids={','.join(config.list_workspace_ids())}",
+        f"workspace_registry_path={config.workspace_registry_path or '(legacy env)'}",
+        f"default_workspace_path={config.agent_workspace}",
         f"discord_trigger_mode={config.discord_trigger_mode}",
-        f"agent_workspace={config.agent_workspace}",
         f"codex_command={config.codex_command}",
         f"log_level={config.log_level}",
     ]
@@ -40,13 +43,7 @@ def build_startup_summary(config: AppConfig) -> str:
 
 
 def main() -> None:
-    """環境変数から設定を読み込み、起動処理を実行する。
-
-    Returns
-    -------
-    None
-        ログ設定後にアプリケーションを起動する。
-    """
+    """環境変数から設定を読み込み、起動処理を実行する。"""
 
     config = AppConfig.from_env()
     configure_logging(config.log_level)
@@ -55,18 +52,7 @@ def main() -> None:
 
 
 def configure_logging(log_level: str) -> None:
-    """ロギングを初期化する。
-
-    Parameters
-    ----------
-    log_level : str
-        ログ出力レベル。
-
-    Returns
-    -------
-    None
-        標準出力向けの logging 設定を適用する。
-    """
+    """ロギングを初期化する。"""
 
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
@@ -75,61 +61,25 @@ def configure_logging(log_level: str) -> None:
 
 
 def build_agent_registry(config: AppConfig) -> AgentRegistry:
-    """設定から Agent registry を構築する。
-
-    Parameters
-    ----------
-    config : AppConfig
-        Agent backend 設定を含むアプリケーション設定。
-
-    Returns
-    -------
-    AgentRegistry
-        利用可能な Agent 実装を登録済みの registry。
-    """
+    """設定から Agent registry を構築する。"""
 
     return AgentRegistry([CodexRunner(config.codex_config)])
 
 
 def build_agent_router(config: AppConfig) -> AgentRouter:
-    """設定から Agent router を構築する。
-
-    Parameters
-    ----------
-    config : AppConfig
-        既定 backend を含むアプリケーション設定。
-
-    Returns
-    -------
-    AgentRouter
-        registry と既定 backend を保持する router。
-    """
+    """設定から Agent router を構築する。"""
 
     registry = build_agent_registry(config)
     return AgentRouter(
         registry=registry,
+        workspace_registry=config.workspace_registry,
         default_backend=config.default_agent_backend,
+        default_workspace_id=config.default_workspace_id,
     )
 
 
 def run_application(config: AppConfig) -> None:
-    """設定に基づいてアプリケーションを起動する。
-
-    Parameters
-    ----------
-    config : AppConfig
-        起動対象の設定。
-
-    Returns
-    -------
-    None
-        対応 backend を起動する。
-
-    Raises
-    ------
-    ConfigError
-        未対応の chat backend が指定された場合。
-    """
+    """設定に基づいてアプリケーションを起動する。"""
 
     if config.chat_backend != "discord":
         raise ConfigError(
@@ -140,18 +90,7 @@ def run_application(config: AppConfig) -> None:
 
 
 async def run_discord_agent_bridge(config: AppConfig) -> None:
-    """Discord から Agent へ中継する bridge を起動する。
-
-    Parameters
-    ----------
-    config : AppConfig
-        Discord と Agent 設定を含むアプリケーション設定。
-
-    Returns
-    -------
-    None
-        Bot 終了まで待機する。
-    """
+    """Discord から Agent へ中継する bridge を起動する。"""
 
     agent_router = build_agent_router(config)
     client = DiscordAgentBridgeClient(config=config, agent_router=agent_router)
