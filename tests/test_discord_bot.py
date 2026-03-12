@@ -1,18 +1,18 @@
-"""discord_bridge モジュールの振る舞いを検証するテスト。"""
+"""discord_bot モジュールの振る舞いを検証するテスト。"""
 
 from pathlib import Path
 
-from agent_port.agent_registry import AgentRegistry
-from agent_port.agent_router import AgentRouter
+from agent_port.registry import AgentRegistry
+from agent_port.router import AgentRouter
 from agent_port.config import AppConfig, CodexAgentConfig
-from agent_port.discord_bridge import (
-    DiscordAgentBridgeClient,
+from agent_port.discord_bot import DiscordBot
+from agent_port.discord_io import (
     build_discord_thread_name,
     extract_discord_delivery,
     extract_discord_prompt,
     split_discord_message,
 )
-from agent_port.workspace_registry import ManagedWorkspace, WorkspaceRegistry
+from agent_port.workspaces import ManagedWorkspace, WorkspaceRegistry
 
 
 def test_extract_discord_prompt_returns_prompt_for_leading_mention() -> None:
@@ -135,7 +135,7 @@ def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
         ),
         log_level="INFO",
     )
-    client = DiscordAgentBridgeClientForTest(config=config, workspace_registry=workspace_registry)
+    client = BotForTest(config=config, workspace_registry=workspace_registry)
 
     message = DummyMessage(
         mentioned=False,
@@ -146,7 +146,7 @@ def test_is_trigger_mentioned_returns_true_for_bot_role_mention() -> None:
     assert client.is_trigger_mentioned_for_test(message) is True
 
 
-class DiscordAgentBridgeClientForTest:
+class BotForTest:
     """`_is_trigger_mentioned` を直接検証するためのテスト用ラッパー。"""
 
     def __init__(self, config: AppConfig, workspace_registry: WorkspaceRegistry) -> None:
@@ -165,7 +165,7 @@ class DiscordAgentBridgeClientForTest:
             private メソッド呼び出しに必要な状態だけを埋める。
         """
 
-        self._client = object.__new__(DiscordAgentBridgeClient)
+        self._client = object.__new__(DiscordBot)
         self._client._config = config
         self._client._agent_router = AgentRouter(
             registry=AgentRegistry(),

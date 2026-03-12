@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from agent_port.agent_registry import AgentRegistry, AgentRegistryError
-from agent_port.agent_router import AgentRouter, AgentRouterError
+from agent_port.registry import AgentRegistry, AgentRegistryError
+from agent_port.router import AgentRouter, AgentRouterError
 from agent_port.agents import AgentRequest, AgentRunResult, AgentRunner
-from agent_port.workspace_registry import ManagedWorkspace, WorkspaceRegistry
+from agent_port.workspaces import ManagedWorkspace, WorkspaceRegistry
 
 
 @dataclass

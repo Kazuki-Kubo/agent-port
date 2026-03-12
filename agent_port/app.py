@@ -5,11 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from agent_port.agent_registry import AgentRegistry
-from agent_port.agent_router import AgentRouter
-from agent_port.codex_runner import CodexRunner
+from agent_port.registry import AgentRegistry
+from agent_port.router import AgentRouter
+from agent_port.codex import CodexRunner
 from agent_port.config import AppConfig, ConfigError
-from agent_port.discord_bridge import DiscordAgentBridgeClient
+from agent_port.discord_bot import DiscordBot
 
 
 def build_startup_summary(config: AppConfig) -> str:
@@ -93,5 +93,5 @@ async def run_discord_agent_bridge(config: AppConfig) -> None:
     """Discord から Agent へ中継する bridge を起動する。"""
 
     agent_router = build_agent_router(config)
-    client = DiscordAgentBridgeClient(config=config, agent_router=agent_router)
+    client = DiscordBot(config=config, agent_router=agent_router)
     await client.start(config.discord_bot_token)

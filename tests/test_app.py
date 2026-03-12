@@ -4,7 +4,7 @@ from pathlib import Path
 
 from agent_port.app import build_startup_summary
 from agent_port.config import AppConfig, CodexAgentConfig
-from agent_port.workspace_registry import ManagedWorkspace, WorkspaceRegistry
+from agent_port.workspaces import ManagedWorkspace, WorkspaceRegistry
 
 
 def test_build_startup_summary_includes_selected_settings() -> None:

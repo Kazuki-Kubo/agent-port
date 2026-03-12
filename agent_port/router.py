@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from agent_port.agent_registry import AgentRegistry, AgentRegistryError
+from agent_port.registry import AgentRegistry, AgentRegistryError
 from agent_port.agents import AgentRequest, AgentRunResult
-from agent_port.workspace_registry import WorkspaceRegistry, WorkspaceRegistryError
+from agent_port.workspaces import WorkspaceRegistry, WorkspaceRegistryError
 
 
 class AgentRouterError(RuntimeError):

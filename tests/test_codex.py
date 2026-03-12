@@ -1,11 +1,11 @@
-"""codex_runner モジュールの動作を検証するテスト。"""
+"""codex モジュールの動作を検証するテスト。"""
 
 from pathlib import Path
 
 import pytest
 
-from agent_port import codex_runner
-from agent_port.codex_runner import (
+from agent_port import codex
+from agent_port.codex import (
     CodexRunner,
     build_codex_exec_command,
     build_codex_prompt,
@@ -47,12 +47,12 @@ def test_resolve_command_path_uses_windows_fallback_extension(
             return "C:/tools/codex.cmd"
         return None
 
-    monkeypatch.setattr(codex_runner.shutil, "which", fake_which)
+    monkeypatch.setattr(codex.shutil, "which", fake_which)
 
     assert resolve_command_path("codex") == "C:/tools/codex.cmd"
 
 
-def test_codex_runner_returns_backend_name() -> None:
+def test_codex_returns_backend_name() -> None:
     """CodexRunner が自身の backend 名を返すことを検証する。"""
 
     runner = CodexRunner(

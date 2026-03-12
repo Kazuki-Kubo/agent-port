@@ -1,7 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-実装本体は `agent_port/` にあります。CLI は `agent_port/cli.py`、起動処理は `agent_port/app.py`、Discord 側の中継は `agent_port/discord_bridge.py`、workspace 管理は `agent_port/workspace_registry.py` に置いています。テストは `tests/`、利用手順は `docs/usage.md`、仕様は `docs/specs.md` と `docs/specs/` にまとめます。workspace 実体はこの repo の外で管理し、`config/workspaces.json` で参照します。
+実装本体は `agent_port/` にあります。CLI は `agent_port/cli.py`、起動処理は `agent_port/app.py`、Discord 側は `agent_port/discord_bot.py`、workspace 管理は `agent_port/workspaces.py` に置いています。テストは `tests/`、利用手順は `docs/usage.md`、仕様は `docs/specs.md` と `docs/specs/` にまとめます。workspace 実体はこの repo の外で管理し、`config/workspaces.json` で参照します。
 
 ## Build, Test, and Development Commands
 - `uv sync --dev`: 開発依存を含めて環境を同期します。

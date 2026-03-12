@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from agent_port.workspace_registry import (
+from agent_port.workspaces import (
     WorkspaceRegistryError,
     load_workspace_registry_from_json,
 )

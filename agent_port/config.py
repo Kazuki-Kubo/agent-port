@@ -6,17 +6,17 @@ from dataclasses import dataclass
 import os
 from pathlib import Path
 
-from agent_port.env_utils import (
+from agent_port.env import (
     load_dotenv_file,
     read_choice_env,
     read_optional_env,
     read_positive_int_env,
 )
-from agent_port.workspace_config import (
+from agent_port.workspace_loader import (
     load_workspace_registry_from_sources,
     resolve_default_workspace_id,
 )
-from agent_port.workspace_registry import WorkspaceRegistry, WorkspaceRegistryError
+from agent_port.workspaces import WorkspaceRegistry, WorkspaceRegistryError
 
 
 class ConfigError(ValueError):

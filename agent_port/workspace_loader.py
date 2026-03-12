@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from agent_port.workspace_registry import (
+from agent_port.workspaces import (
     WorkspaceRegistry,
     WorkspaceRegistryError,
     create_legacy_workspace_registry,

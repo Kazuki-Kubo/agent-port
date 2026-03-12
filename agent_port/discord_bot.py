@@ -6,8 +6,8 @@ import logging
 
 import discord
 
-from agent_port.agent_router import AgentRouter, AgentRouterError
-from agent_port.codex_runner import CodexExecutionError
+from agent_port.router import AgentRouter, AgentRouterError
+from agent_port.codex import CodexExecutionError
 from agent_port.config import AppConfig
 from agent_port.discord_io import (
     DiscordPrompt,
@@ -20,7 +20,7 @@ from agent_port.discord_io import (
 )
 
 
-class DiscordAgentBridgeClient(discord.Client):
+class DiscordBot(discord.Client):
     """Discord メッセージを Agent へ中継する Client。"""
 
     def __init__(self, config: AppConfig, agent_router: AgentRouter) -> None:
@@ -175,4 +175,5 @@ class DiscordAgentBridgeClient(discord.Client):
         bot_role_ids = {role.id for role in bot_member.roles}
         mentioned_role_ids = {role.id for role in message.role_mentions}
         return bool(bot_role_ids & mentioned_role_ids)
-DiscordCodexBridgeClient = DiscordAgentBridgeClient
+DiscordAgentBridgeClient = DiscordBot
+DiscordCodexBridgeClient = DiscordBot
