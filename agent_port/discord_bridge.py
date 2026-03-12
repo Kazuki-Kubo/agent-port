@@ -87,14 +87,27 @@ class DiscordCodexBridgeClient(discord.Client):
         if message.author.bot:
             return
 
+        is_bot_mentioned = self.user.mentioned_in(message) if self.user is not None else False
         prompt = extract_discord_prompt(
             content=message.content,
             trigger_mode=self._config.discord_trigger_mode,
             bot_user_id=self.user.id if self.user is not None else None,
+            is_bot_mentioned=is_bot_mentioned,
         )
         if prompt is None:
+            if self._config.discord_trigger_mode == "mention" and is_bot_mentioned:
+                await send_discord_text(
+                    message,
+                    "Bot をメンションしたあとに本文も送ってください。",
+                )
             return
 
+        self._logger.info(
+            "Executing Codex for channel=%s author=%s prompt_length=%s",
+            getattr(message.channel, "id", "unknown"),
+            message.author,
+            len(prompt.prompt),
+        )
         async with message.channel.typing():
             try:
                 result = await self._codex_runner.run_prompt(prompt.prompt)
@@ -109,6 +122,7 @@ def extract_discord_prompt(
     content: str,
     trigger_mode: str,
     bot_user_id: int | None,
+    is_bot_mentioned: bool,
 ) -> DiscordPrompt | None:
     """Discord メッセージから Codex 実行対象の本文を取り出す。
 
@@ -120,6 +134,8 @@ def extract_discord_prompt(
         反応条件。`mention` または `all`。
     bot_user_id : int | None
         メンション判定に使う Bot ユーザー ID。
+    is_bot_mentioned : bool
+        Discord 側で Bot がメンションされたと判定できているかどうか。
 
     Returns
     -------
@@ -134,9 +150,9 @@ def extract_discord_prompt(
     if trigger_mode == "all":
         prompt = normalized_content
     elif trigger_mode == "mention":
-        if bot_user_id is None:
+        if bot_user_id is None or not is_bot_mentioned:
             return None
-        prompt = _strip_leading_bot_mention(
+        prompt = _strip_bot_mention(
             content=normalized_content,
             bot_user_id=bot_user_id,
         )
@@ -149,8 +165,8 @@ def extract_discord_prompt(
     return DiscordPrompt(prompt=prompt)
 
 
-def _strip_leading_bot_mention(content: str, bot_user_id: int) -> str:
-    """先頭の Bot メンションを取り除いた本文を返す。
+def _strip_bot_mention(content: str, bot_user_id: int) -> str:
+    """Bot メンションを取り除いた本文を返す。
 
     Parameters
     ----------
@@ -162,14 +178,14 @@ def _strip_leading_bot_mention(content: str, bot_user_id: int) -> str:
     Returns
     -------
     str
-        先頭が Bot メンションなら、それを除いた本文。対象外なら空文字。
+        Bot メンションを除いた本文。本文が残らなければ空文字。
     """
 
     mention_variants = [f"<@{bot_user_id}>", f"<@!{bot_user_id}>"]
+    normalized_content = content
     for mention in mention_variants:
-        if content.startswith(mention):
-            return content[len(mention) :].strip()
-    return ""
+        normalized_content = normalized_content.replace(mention, " ")
+    return normalized_content.strip()
 
 
 async def send_discord_text(
